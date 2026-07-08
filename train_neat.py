@@ -14,7 +14,10 @@ cancellable ScheduledClickController.
 Human-imperfection knobs: --inaccuracy adds gaussian aim error to each
 prompted target distance (scaled by current pick speed); --reaction_time_ms
 (jittered by --reaction_time_standard_deviation) delays the reprompt that
-follows a new bar spawn by that many milliseconds worth of ticks. When a
+follows a new bar spawn by that many milliseconds worth of ticks, and until
+that reaction lands the new bar is hidden from build_inputs entirely — so
+prompts fired in between (a click's target-reached reprompt, idle
+reprompts) cannot plan around a bar the "human" hasn't noticed yet. When a
 knob is 0 its random draws are skipped entirely. --max_episode_seconds caps
 episode length; raising it makes long-surviving genomes cost more to evaluate.
 
@@ -79,6 +82,7 @@ def run_episode(net, seed: int, inaccuracy: float = 0.0,
     has_reaction = reaction_time_ms > 0.0
     reaction_base_ticks = (reaction_time_ms / 1000.0) * tick_rate
     scheduled_reactions: set[int] = set()
+    unreacted_bars: list[tuple] = []   # (reaction tick, Bar) hidden until then
     for tick in range(max_ticks):
         should_prompt = False
         events = ctrl.step()
@@ -90,13 +94,28 @@ def run_episode(net, seed: int, inaccuracy: float = 0.0,
                 # human-like (jittered) reaction delay
                 if not has_reaction:
                     should_prompt = True   # 0 delay would fire this tick anyway
-                elif reaction_time_std == 0.0:
-                    scheduled_reactions.add(tick + round(reaction_base_ticks))
                 else:
-                    delay = reaction_base_ticks * (1.0 + gauss(0.0, 1.0) * reaction_time_std)
-                    scheduled_reactions.add(tick + max(0, round(delay)))
+                    if reaction_time_std == 0.0:
+                        due = tick + round(reaction_base_ticks)
+                    else:
+                        delay = reaction_base_ticks * (1.0 + gauss(0.0, 1.0) * reaction_time_std)
+                        due = tick + max(0, round(delay))
+                    scheduled_reactions.add(due)
+                    if due > tick:
+                        # not noticed yet: build_inputs skips the bar, so
+                        # prompts fired meanwhile (e.g. right after a click)
+                        # can't plan around it
+                        ev[1].perceived = False
+                        unreacted_bars.append((due, ev[1]))
             elif ev[0] == EV_TARGET_REACHED:
                 should_prompt = True
+        if unreacted_bars:
+            # reaction lands: bar becomes visible on the same tick its
+            # scheduled reprompt fires (harmless if it already despawned)
+            for due, bar in unreacted_bars:
+                if due <= tick:
+                    bar.perceived = True
+            unreacted_bars = [p for p in unreacted_bars if p[0] > tick]
         if scheduled_reactions and tick in scheduled_reactions:
             scheduled_reactions.discard(tick)
             should_prompt = True

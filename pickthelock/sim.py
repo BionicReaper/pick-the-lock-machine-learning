@@ -56,6 +56,10 @@ class Bar:
     width: float           # full arc width, deg (shrinks over time)
     is_blue: bool
     born_at: float         # sim time
+    # False while a reaction delay hides this bar from the model's
+    # observations (set by the controller; the sim itself never reads it,
+    # so an already-scheduled click can still land on an unperceived bar)
+    perceived: bool = True
 
 
 class LockpickingSim:

@@ -17,7 +17,11 @@ Human-imperfection knobs (all default to "perfect play"):
   inaccuracy         gaussian aim error added to every scheduled distance,
                      proportional to the current pick speed
   reaction_time_ms   delay before reacting to a new bar spawn; arm it with
-                     schedule_prompt() and poll prompt_due each tick
+                     schedule_prompt(bar) and poll prompt_due each tick.
+                     Until the reaction lands the bar is also marked
+                     unperceived (bar.perceived = False), so observations
+                     built in the meantime — e.g. the immediate reprompt
+                     after a click — cannot leak the not-yet-seen bar
   reaction_time_std  relative gaussian jitter on that delay
 """
 
@@ -25,7 +29,7 @@ from __future__ import annotations
 
 import random
 
-from .sim import LockpickingSim, EV_TARGET_REACHED
+from .sim import LockpickingSim, Bar, EV_TARGET_REACHED
 
 
 class ScheduledClickController:
@@ -42,6 +46,7 @@ class ScheduledClickController:
         self._start_traveled = 0.0
         self.tick_counter = 0
         self.scheduled_prompts: set[int] = set()
+        self._pending_reactions: list[tuple[int, Bar]] = []
 
     # ------------------------------------------------------------------ #
 
@@ -67,21 +72,28 @@ class ScheduledClickController:
         self.active = False
         self.sim.rmb_held = False
 
-    def schedule_prompt(self) -> None:
+    def schedule_prompt(self, bar: Bar | None = None) -> None:
         """Request a prompt after a human-like reaction delay.
 
         Call on unforeseeable stimuli (a new bar spawn); the tick at which
         the reaction lands is added to scheduled_prompts and prompt_due
-        turns True on that tick. Zero-valued knobs skip the random draw."""
+        turns True on that tick. Pass the spawned bar to also mark it
+        unperceived until then, so build_inputs hides it from any prompt
+        fired in between. Zero-valued knobs skip the random draw."""
         if self.reaction_time_ms <= 0.0:
             self.scheduled_prompts.add(self.tick_counter)
             return
         base = (self.reaction_time_ms / 1000.0) * self.sim.tuning.tick_rate
         if self.reaction_time_std == 0.0:
-            self.scheduled_prompts.add(self.tick_counter + round(base))
-            return
-        delay = base * (1.0 + random.gauss(0.0, 1.0) * self.reaction_time_std)
-        self.scheduled_prompts.add(self.tick_counter + max(0, round(delay)))
+            delay_ticks = round(base)
+        else:
+            delay = base * (1.0 + random.gauss(0.0, 1.0) * self.reaction_time_std)
+            delay_ticks = max(0, round(delay))
+        due = self.tick_counter + delay_ticks
+        self.scheduled_prompts.add(due)
+        if bar is not None and delay_ticks > 0:
+            bar.perceived = False
+            self._pending_reactions.append((due, bar))
 
     @property
     def prompt_due(self) -> bool:
@@ -118,6 +130,16 @@ class ScheduledClickController:
         if self.scheduled_prompts:
             self.scheduled_prompts.discard(self.tick_counter)
         self.tick_counter += 1
+        if self._pending_reactions:
+            # reaction lands this tick: the bar becomes visible on the very
+            # tick its scheduled reprompt fires (harmless if already gone)
+            still_pending = []
+            for due, bar in self._pending_reactions:
+                if due <= self.tick_counter:
+                    bar.perceived = True
+                else:
+                    still_pending.append((due, bar))
+            self._pending_reactions = still_pending
         sim = self.sim
         if not self.active:
             return sim.tick()

@@ -254,7 +254,7 @@ class GameApp:
             if kind == EV_TARGET_REACHED:
                 reprompt = True
             elif kind == EV_BAR_SPAWNED and self.net:
-                self.ctrl.schedule_prompt()
+                self.ctrl.schedule_prompt(ev[1])
         if self.net and self.state == RUNNING and (
                 reprompt or self.ctrl.prompt_due or not self.ctrl.active):
             self._ai_prompt()
