@@ -72,9 +72,15 @@ class ScheduledClickController:
 
         Call on unforeseeable stimuli (a new bar spawn); the tick at which
         the reaction lands is added to scheduled_prompts and prompt_due
-        turns True on that tick."""
-        delay = ((self.reaction_time_ms / 1000.0) * self.sim.tuning.tick_rate
-                 * (1.0 + random.gauss(0.0, 1.0) * self.reaction_time_std))
+        turns True on that tick. Zero-valued knobs skip the random draw."""
+        if self.reaction_time_ms <= 0.0:
+            self.scheduled_prompts.add(self.tick_counter)
+            return
+        base = (self.reaction_time_ms / 1000.0) * self.sim.tuning.tick_rate
+        if self.reaction_time_std == 0.0:
+            self.scheduled_prompts.add(self.tick_counter + round(base))
+            return
+        delay = base * (1.0 + random.gauss(0.0, 1.0) * self.reaction_time_std)
         self.scheduled_prompts.add(self.tick_counter + max(0, round(delay)))
 
     @property
@@ -109,7 +115,8 @@ class ScheduledClickController:
         (EV_TARGET_REACHED, clicked_events) when the scheduled distance is hit.
         """
         # previous tick is over: its reaction entry (if any) has been consumed
-        self.scheduled_prompts.discard(self.tick_counter)
+        if self.scheduled_prompts:
+            self.scheduled_prompts.discard(self.tick_counter)
         self.tick_counter += 1
         sim = self.sim
         if not self.active:

@@ -14,7 +14,9 @@ cancellable ScheduledClickController.
 Human-imperfection knobs: --inaccuracy adds gaussian aim error to each
 prompted target distance (scaled by current pick speed); --reaction_time_ms
 (jittered by --reaction_time_standard_deviation) delays the reprompt that
-follows a new bar spawn by that many milliseconds worth of ticks.
+follows a new bar spawn by that many milliseconds worth of ticks. When a
+knob is 0 its random draws are skipped entirely. --max_episode_seconds caps
+episode length; raising it makes long-surviving genomes cost more to evaluate.
 
 Usage:
     .venv\\Scripts\\python.exe train_neat.py --generations 100
@@ -51,27 +53,31 @@ CONFIG_PATH = os.path.join(ROOT, "neat_config.txt")
 
 EVAL_RUNS = 15               # headless simulations per genome (5-10)
 W_AVG, W_WORST, W_BEST = 0.5, 0.25, 0.25
-MAX_EPISODE_SECONDS = 1600.0  # hard safety cap (timer bonuses extend games)
+MAX_EPISODE_SECONDS = 600.0  # default --max_episode_seconds (timer bonuses extend games)
 
 
 # --------------------------------------------------------------------- #
 # episode
 
 def run_episode(net, seed: int, inaccuracy: float = 0.0,
-                reaction_time_ms: float = 0.0, reaction_time_std: float = 0.05) -> int:
+                reaction_time_ms: float = 0.0, reaction_time_std: float = 0.05,
+                max_episode_seconds: float = MAX_EPISODE_SECONDS) -> int:
     sim = LockpickingSim(DEFAULT_STAGE, DEFAULT_TUNING, seed=seed)
     ctrl = ScheduledClickController(sim)
+    gauss = random.gauss
 
     def prompt():
         dist, boost_frac, do_click = decode_outputs(net.activate(build_inputs(sim)), sim)
         if inaccuracy > 0.0:
             # human aim error: the faster the pick moves, the sloppier the aim
-            dist += sim.current_speed * inaccuracy * random.gauss(0.0, 1.0)
+            dist += sim.current_speed * inaccuracy * gauss(0.0, 1.0)
         ctrl.schedule(dist, boost_frac, do_click)
 
     prompt()
     tick_rate = DEFAULT_TUNING.tick_rate
-    max_ticks = int(MAX_EPISODE_SECONDS * tick_rate)
+    max_ticks = int(max_episode_seconds * tick_rate)
+    has_reaction = reaction_time_ms > 0.0
+    reaction_base_ticks = (reaction_time_ms / 1000.0) * tick_rate
     scheduled_reactions: set[int] = set()
     for tick in range(max_ticks):
         should_prompt = False
@@ -82,12 +88,16 @@ def run_episode(net, seed: int, inaccuracy: float = 0.0,
             if ev[0] == EV_BAR_SPAWNED:
                 # unforeseeable stimulus: the reprompt lands only after a
                 # human-like (jittered) reaction delay
-                delay = ((reaction_time_ms / 1000.0) * tick_rate
-                         * (1.0 + random.gauss(0.0, 1.0) * reaction_time_std))
-                scheduled_reactions.add(tick + max(0, round(delay)))
+                if not has_reaction:
+                    should_prompt = True   # 0 delay would fire this tick anyway
+                elif reaction_time_std == 0.0:
+                    scheduled_reactions.add(tick + round(reaction_base_ticks))
+                else:
+                    delay = reaction_base_ticks * (1.0 + gauss(0.0, 1.0) * reaction_time_std)
+                    scheduled_reactions.add(tick + max(0, round(delay)))
             elif ev[0] == EV_TARGET_REACHED:
                 should_prompt = True
-        if tick in scheduled_reactions:
+        if scheduled_reactions and tick in scheduled_reactions:
             scheduled_reactions.discard(tick)
             should_prompt = True
         if not ctrl.active:
@@ -98,9 +108,11 @@ def run_episode(net, seed: int, inaccuracy: float = 0.0,
 
 
 def eval_genome(genome, config, seeds, inaccuracy: float = 0.0,
-                reaction_time_ms: float = 0.0, reaction_time_std: float = 0.05) -> float:
+                reaction_time_ms: float = 0.0, reaction_time_std: float = 0.05,
+                max_episode_seconds: float = MAX_EPISODE_SECONDS) -> float:
     net = neat.nn.FeedForwardNetwork.create(genome, config)
-    scores = [run_episode(net, s, inaccuracy, reaction_time_ms, reaction_time_std)
+    scores = [run_episode(net, s, inaccuracy, reaction_time_ms, reaction_time_std,
+                          max_episode_seconds)
               for s in seeds]
     return (W_AVG * (sum(scores) / len(scores))
             + W_WORST * min(scores)
@@ -109,8 +121,9 @@ def eval_genome(genome, config, seeds, inaccuracy: float = 0.0,
 
 # top-level so Windows 'spawn' processes can pickle it
 def _eval_task(args):
-    genome_id, genome, config, seeds, inaccuracy, reaction_ms, reaction_std = args
-    return genome_id, eval_genome(genome, config, seeds, inaccuracy, reaction_ms, reaction_std)
+    genome_id, genome, config, seeds, inaccuracy, reaction_ms, reaction_std, max_ep_s = args
+    return genome_id, eval_genome(genome, config, seeds, inaccuracy, reaction_ms,
+                                  reaction_std, max_ep_s)
 
 
 def _atomic_pickle(path: str, obj) -> None:
@@ -127,7 +140,8 @@ def _atomic_pickle(path: str, obj) -> None:
 class Trainer:
     def __init__(self, config, workers: int, runs: int, seed_base: int,
                  inaccuracy: float = 0.0, reaction_time_ms: float = 0.0,
-                 reaction_time_std: float = 0.05):
+                 reaction_time_std: float = 0.05,
+                 max_episode_seconds: float = MAX_EPISODE_SECONDS):
         self.config = config
         self.workers = workers
         self.runs = runs
@@ -135,6 +149,7 @@ class Trainer:
         self.inaccuracy = inaccuracy
         self.reaction_time_ms = reaction_time_ms
         self.reaction_time_std = reaction_time_std
+        self.max_episode_seconds = max_episode_seconds
         self.generation = 0
         self.best_fitness = float("-inf")
         self.history: list[tuple[int, float, float]] = []
@@ -145,8 +160,8 @@ class Trainer:
     def eval_genomes(self, genomes, config):
         # same seeds for every genome within a generation, new set each gen
         seeds = [self.seed_base + self.generation * 7919 + i for i in range(self.runs)]
-        tasks = [(gid, g, config, seeds, self.inaccuracy,
-                  self.reaction_time_ms, self.reaction_time_std) for gid, g in genomes]
+        tasks = [(gid, g, config, seeds, self.inaccuracy, self.reaction_time_ms,
+                  self.reaction_time_std, self.max_episode_seconds) for gid, g in genomes]
         if self.pool is not None:
             results = dict(self.pool.map(_eval_task, tasks))
         else:
@@ -201,6 +216,10 @@ def main():
     parser.add_argument("--reaction_time_standard_deviation", type=float, default=0.05,
                         help="relative gaussian jitter of the reaction delay "
                              "(>= 0, typically 0-0.2)")
+    parser.add_argument("--max_episode_seconds", type=float, default=MAX_EPISODE_SECONDS,
+                        help="hard cap on episode length in sim seconds (timer bonuses can "
+                             "extend games this far; long-surviving genomes cost "
+                             "proportionally more to evaluate)")
     parser.add_argument("--resume", default=None, help="path to a neat-checkpoint-N file")
     parser.add_argument("--smoke", action="store_true",
                         help="tiny run (pop 16, 2 gens, 3 sims, 1 worker) to verify the pipeline")
@@ -211,6 +230,8 @@ def main():
         parser.error("--reaction_time_ms must be non-negative")
     if args.reaction_time_standard_deviation < 0.0:
         parser.error("--reaction_time_standard_deviation must be non-negative")
+    if args.max_episode_seconds <= 0.0:
+        parser.error("--max_episode_seconds must be positive")
 
     os.makedirs(MODELS_DIR, exist_ok=True)
 
@@ -229,7 +250,8 @@ def main():
 
     trainer = Trainer(config, args.workers, args.runs, args.seed_base,
                       args.inaccuracy, args.reaction_time_ms,
-                      args.reaction_time_standard_deviation)
+                      args.reaction_time_standard_deviation,
+                      args.max_episode_seconds)
     if args.resume:
         # keep the per-generation seed rotation moving forward after a resume
         trainer.generation = pop.generation
