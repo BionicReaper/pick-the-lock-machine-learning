@@ -1,0 +1,118 @@
+<!-- kv3 encoding:text:version{e21c7f3c-8a33-41c5-9977-a76d3a32aa0d} format:generic:version{7412167c-06e9-4698-aff2-e63eb59037e7} -->
+{
+	VrfExportedSound = 
+	{
+		_class = "CVoiceContainerDefault"
+		m_vSound = 
+		{
+			m_Sentences = 
+			[
+				{
+					m_bShouldVoiceDuck = false
+					m_RunTimePhonemes = 
+					[
+						{
+							m_flStartTime = 0.688
+							m_flEndTime = 0.832
+							m_nPhonemeCode = 618
+						},
+						{
+							m_flStartTime = 0.832
+							m_flEndTime = 0.848
+							m_nPhonemeCode = 116
+						},
+						{
+							m_flStartTime = 0.848
+							m_flEndTime = 0.864
+							m_nPhonemeCode = 603
+						},
+						{
+							m_flStartTime = 0.864
+							m_flEndTime = 0.928
+							m_nPhonemeCode = 115
+						},
+						{
+							m_flStartTime = 0.928
+							m_flEndTime = 0.992
+							m_nPhonemeCode = 596
+						},
+						{
+							m_flStartTime = 0.992
+							m_flEndTime = 1.216
+							m_nPhonemeCode = 108
+						},
+						{
+							m_flStartTime = 1.216
+							m_flEndTime = 1.296
+							m_nPhonemeCode = 112
+						},
+						{
+							m_flStartTime = 1.296
+							m_flEndTime = 1.472
+							m_nPhonemeCode = 593
+						},
+						{
+							m_flStartTime = 1.472
+							m_flEndTime = 1.488
+							m_nPhonemeCode = 633
+						},
+						{
+							m_flStartTime = 1.488
+							m_flEndTime = 1.504
+							m_nPhonemeCode = 116
+						},
+						{
+							m_flStartTime = 1.504
+							m_flEndTime = 1.552
+							m_nPhonemeCode = 652
+						},
+						{
+							m_flStartTime = 1.552
+							m_flEndTime = 1.568
+							m_nPhonemeCode = 118
+						},
+						{
+							m_flStartTime = 1.568
+							m_flEndTime = 1.584
+							m_nPhonemeCode = 240
+						},
+						{
+							m_flStartTime = 1.584
+							m_flEndTime = 1.68
+							m_nPhonemeCode = 105
+						},
+						{
+							m_flStartTime = 1.68
+							m_flEndTime = 1.872
+							m_nPhonemeCode = 643
+						},
+						{
+							m_flStartTime = 1.872
+							m_flEndTime = 2.272
+							m_nPhonemeCode = 111
+						},
+					]
+					m_EmphasisSamples = [  ]
+					m_morphData = 
+					{
+						m_times = [  ]
+						m_nameHashCodes = [  ]
+						m_nameStrings = [  ]
+						m_samples = [  ]
+						m_flEaseIn = 0.2
+						m_flEaseOut = 0.2
+					}
+				},
+			]
+			m_nRate = 44100
+			m_nFormat = "MP3"
+			m_nChannels = 2
+			m_nLoopStart = -1
+			m_nSampleCount = 101413
+			m_flDuration = 2.299614
+			m_nStreamingSize = 45377
+			m_nLoopEnd = 0
+		}
+		m_pEnvelopeAnalyzer = null
+	}
+}

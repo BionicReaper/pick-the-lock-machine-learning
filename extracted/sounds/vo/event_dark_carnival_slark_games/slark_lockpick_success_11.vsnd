@@ -1,0 +1,78 @@
+<!-- kv3 encoding:text:version{e21c7f3c-8a33-41c5-9977-a76d3a32aa0d} format:generic:version{7412167c-06e9-4698-aff2-e63eb59037e7} -->
+{
+	VrfExportedSound = 
+	{
+		_class = "CVoiceContainerDefault"
+		m_vSound = 
+		{
+			m_Sentences = 
+			[
+				{
+					m_bShouldVoiceDuck = false
+					m_RunTimePhonemes = 
+					[
+						{
+							m_flStartTime = 0.208
+							m_flEndTime = 0.352
+							m_nPhonemeCode = 633
+						},
+						{
+							m_flStartTime = 0.352
+							m_flEndTime = 0.416
+							m_nPhonemeCode = 593
+						},
+						{
+							m_flStartTime = 0.416
+							m_flEndTime = 0.432
+							m_nPhonemeCode = 116
+						},
+						{
+							m_flStartTime = 0.544
+							m_flEndTime = 0.624
+							m_nPhonemeCode = 603
+						},
+						{
+							m_flStartTime = 0.624
+							m_flEndTime = 0.736
+							m_nPhonemeCode = 122
+						},
+						{
+							m_flStartTime = 0.736
+							m_flEndTime = 0.832
+							m_nPhonemeCode = 633
+						},
+						{
+							m_flStartTime = 0.832
+							m_flEndTime = 1.04
+							m_nPhonemeCode = 101
+						},
+						{
+							m_flStartTime = 1.04
+							m_flEndTime = 1.28
+							m_nPhonemeCode = 110
+						},
+					]
+					m_EmphasisSamples = [  ]
+					m_morphData = 
+					{
+						m_times = [  ]
+						m_nameHashCodes = [  ]
+						m_nameStrings = [  ]
+						m_samples = [  ]
+						m_flEaseIn = 0.2
+						m_flEaseOut = 0.2
+					}
+				},
+			]
+			m_nRate = 44100
+			m_nFormat = "MP3"
+			m_nChannels = 2
+			m_nLoopStart = -1
+			m_nSampleCount = 50531
+			m_flDuration = 1.145828
+			m_nStreamingSize = 23259
+			m_nLoopEnd = 0
+		}
+		m_pEnvelopeAnalyzer = null
+	}
+}

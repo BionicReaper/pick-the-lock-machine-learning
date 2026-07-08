@@ -1,0 +1,138 @@
+<!-- kv3 encoding:text:version{e21c7f3c-8a33-41c5-9977-a76d3a32aa0d} format:generic:version{7412167c-06e9-4698-aff2-e63eb59037e7} -->
+{
+	VrfExportedSound = 
+	{
+		_class = "CVoiceContainerDefault"
+		m_vSound = 
+		{
+			m_Sentences = 
+			[
+				{
+					m_bShouldVoiceDuck = false
+					m_RunTimePhonemes = 
+					[
+						{
+							m_flStartTime = 0.912
+							m_flEndTime = 1.072
+							m_nPhonemeCode = 115
+						},
+						{
+							m_flStartTime = 1.072
+							m_flEndTime = 1.216
+							m_nPhonemeCode = 593
+						},
+						{
+							m_flStartTime = 1.216
+							m_flEndTime = 1.312
+							m_nPhonemeCode = 633
+						},
+						{
+							m_flStartTime = 1.312
+							m_flEndTime = 1.504
+							m_nPhonemeCode = 105
+						},
+						{
+							m_flStartTime = 1.792
+							m_flEndTime = 1.856
+							m_nPhonemeCode = 109
+						},
+						{
+							m_flStartTime = 1.856
+							m_flEndTime = 2.064
+							m_nPhonemeCode = 117
+						},
+						{
+							m_flStartTime = 2.064
+							m_flEndTime = 2.192
+							m_nPhonemeCode = 115
+						},
+						{
+							m_flStartTime = 2.192
+							m_flEndTime = 2.208
+							m_nPhonemeCode = 116
+						},
+						{
+							m_flStartTime = 2.208
+							m_flEndTime = 2.224
+							m_nPhonemeCode = 104
+						},
+						{
+							m_flStartTime = 2.224
+							m_flEndTime = 2.464
+							m_nPhonemeCode = 230
+						},
+						{
+							m_flStartTime = 2.464
+							m_flEndTime = 2.528
+							m_nPhonemeCode = 110
+						},
+						{
+							m_flStartTime = 2.528
+							m_flEndTime = 2.624
+							m_nPhonemeCode = 122
+						},
+						{
+							m_flStartTime = 2.624
+							m_flEndTime = 2.656
+							m_nPhonemeCode = 601
+						},
+						{
+							m_flStartTime = 2.656
+							m_flEndTime = 2.672
+							m_nPhonemeCode = 110
+						},
+						{
+							m_flStartTime = 2.672
+							m_flEndTime = 2.704
+							m_nPhonemeCode = 100
+						},
+						{
+							m_flStartTime = 2.704
+							m_flEndTime = 2.768
+							m_nPhonemeCode = 596
+						},
+						{
+							m_flStartTime = 2.768
+							m_flEndTime = 2.928
+							m_nPhonemeCode = 108
+						},
+						{
+							m_flStartTime = 2.928
+							m_flEndTime = 2.944
+							m_nPhonemeCode = 240
+						},
+						{
+							m_flStartTime = 2.944
+							m_flEndTime = 3.184
+							m_nPhonemeCode = 230
+						},
+						{
+							m_flStartTime = 3.184
+							m_flEndTime = 3.216
+							m_nPhonemeCode = 116
+						},
+					]
+					m_EmphasisSamples = [  ]
+					m_morphData = 
+					{
+						m_times = [  ]
+						m_nameHashCodes = [  ]
+						m_nameStrings = [  ]
+						m_samples = [  ]
+						m_flEaseIn = 0.2
+						m_flEaseOut = 0.2
+					}
+				},
+			]
+			m_nRate = 44100
+			m_nFormat = "MP3"
+			m_nChannels = 2
+			m_nLoopStart = -1
+			m_nSampleCount = 144729
+			m_flDuration = 3.281837
+			m_nStreamingSize = 64465
+			m_nLoopEnd = 0
+		}
+		m_pEnvelopeAnalyzer = null
+	}
+}

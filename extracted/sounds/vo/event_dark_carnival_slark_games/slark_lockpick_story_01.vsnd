@@ -1,0 +1,203 @@
+<!-- kv3 encoding:text:version{e21c7f3c-8a33-41c5-9977-a76d3a32aa0d} format:generic:version{7412167c-06e9-4698-aff2-e63eb59037e7} -->
+{
+	VrfExportedSound = 
+	{
+		_class = "CVoiceContainerDefault"
+		m_vSound = 
+		{
+			m_Sentences = 
+			[
+				{
+					m_bShouldVoiceDuck = false
+					m_RunTimePhonemes = 
+					[
+						{
+							m_flStartTime = 0.432
+							m_flEndTime = 0.496
+							m_nPhonemeCode = 119
+						},
+						{
+							m_flStartTime = 0.496
+							m_flEndTime = 0.576
+							m_nPhonemeCode = 652
+						},
+						{
+							m_flStartTime = 0.576
+							m_flEndTime = 0.592
+							m_nPhonemeCode = 116
+						},
+						{
+							m_flStartTime = 0.64
+							m_flEndTime = 0.656
+							m_nPhonemeCode = 603
+						},
+						{
+							m_flStartTime = 0.656
+							m_flEndTime = 0.784
+							m_nPhonemeCode = 115
+						},
+						{
+							m_flStartTime = 0.784
+							m_flEndTime = 0.896
+							m_nPhonemeCode = 633
+						},
+						{
+							m_flStartTime = 0.896
+							m_flEndTime = 1.056
+							m_nPhonemeCode = 596
+						},
+						{
+							m_flStartTime = 1.056
+							m_flEndTime = 1.168
+							m_nPhonemeCode = 331
+						},
+						{
+							m_flStartTime = 1.168
+							m_flEndTime = 1.232
+							m_nPhonemeCode = 107
+						},
+						{
+							m_flStartTime = 1.232
+							m_flEndTime = 1.264
+							m_nPhonemeCode = 601
+						},
+						{
+							m_flStartTime = 1.264
+							m_flEndTime = 1.344
+							m_nPhonemeCode = 109
+						},
+						{
+							m_flStartTime = 1.344
+							m_flEndTime = 1.744
+							m_nPhonemeCode = 230
+						},
+						{
+							m_flStartTime = 1.744
+							m_flEndTime = 1.792
+							m_nPhonemeCode = 110
+						},
+						{
+							m_flStartTime = 1.792
+							m_flEndTime = 1.808
+							m_nPhonemeCode = 100
+						},
+						{
+							m_flStartTime = 1.808
+							m_flEndTime = 1.824
+							m_nPhonemeCode = 602
+						},
+						{
+							m_flStartTime = 2.128
+							m_flEndTime = 2.176
+							m_nPhonemeCode = 107
+						},
+						{
+							m_flStartTime = 2.176
+							m_flEndTime = 2.224
+							m_nPhonemeCode = 650
+						},
+						{
+							m_flStartTime = 2.224
+							m_flEndTime = 2.24
+							m_nPhonemeCode = 100
+						},
+						{
+							m_flStartTime = 2.24
+							m_flEndTime = 2.256
+							m_nPhonemeCode = 110
+						},
+						{
+							m_flStartTime = 2.256
+							m_flEndTime = 2.272
+							m_nPhonemeCode = 116
+						},
+						{
+							m_flStartTime = 2.272
+							m_flEndTime = 2.304
+							m_nPhonemeCode = 105
+						},
+						{
+							m_flStartTime = 2.304
+							m_flEndTime = 2.416
+							m_nPhonemeCode = 100
+						},
+						{
+							m_flStartTime = 2.416
+							m_flEndTime = 2.528
+							m_nPhonemeCode = 117
+						},
+						{
+							m_flStartTime = 2.528
+							m_flEndTime = 2.544
+							m_nPhonemeCode = 240
+						},
+						{
+							m_flStartTime = 2.544
+							m_flEndTime = 2.688
+							m_nPhonemeCode = 230
+						},
+						{
+							m_flStartTime = 2.688
+							m_flEndTime = 2.704
+							m_nPhonemeCode = 116
+						},
+						{
+							m_flStartTime = 2.704
+							m_flEndTime = 2.8
+							m_nPhonemeCode = 106
+						},
+						{
+							m_flStartTime = 2.8
+							m_flEndTime = 2.88
+							m_nPhonemeCode = 650
+						},
+						{
+							m_flStartTime = 2.88
+							m_flEndTime = 2.896
+							m_nPhonemeCode = 633
+						},
+						{
+							m_flStartTime = 2.896
+							m_flEndTime = 3.04
+							m_nPhonemeCode = 115
+						},
+						{
+							m_flStartTime = 3.04
+							m_flEndTime = 3.184
+							m_nPhonemeCode = 603
+						},
+						{
+							m_flStartTime = 3.184
+							m_flEndTime = 3.28
+							m_nPhonemeCode = 108
+						},
+						{
+							m_flStartTime = 3.28
+							m_flEndTime = 3.472
+							m_nPhonemeCode = 102
+						},
+					]
+					m_EmphasisSamples = [  ]
+					m_morphData = 
+					{
+						m_times = [  ]
+						m_nameHashCodes = [  ]
+						m_nameStrings = [  ]
+						m_samples = [  ]
+						m_flEaseIn = 0.2
+						m_flEaseOut = 0.2
+					}
+				},
+			]
+			m_nRate = 44100
+			m_nFormat = "MP3"
+			m_nChannels = 2
+			m_nLoopStart = -1
+			m_nSampleCount = 155363
+			m_flDuration = 3.52297
+			m_nStreamingSize = 75950
+			m_nLoopEnd = 0
+		}
+		m_pEnvelopeAnalyzer = null
+	}
+}

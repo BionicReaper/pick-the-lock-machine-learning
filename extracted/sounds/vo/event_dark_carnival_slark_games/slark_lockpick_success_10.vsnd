@@ -1,0 +1,93 @@
+<!-- kv3 encoding:text:version{e21c7f3c-8a33-41c5-9977-a76d3a32aa0d} format:generic:version{7412167c-06e9-4698-aff2-e63eb59037e7} -->
+{
+	VrfExportedSound = 
+	{
+		_class = "CVoiceContainerDefault"
+		m_vSound = 
+		{
+			m_Sentences = 
+			[
+				{
+					m_bShouldVoiceDuck = false
+					m_RunTimePhonemes = 
+					[
+						{
+							m_flStartTime = 0.496
+							m_flEndTime = 0.512
+							m_nPhonemeCode = 240
+						},
+						{
+							m_flStartTime = 0.512
+							m_flEndTime = 0.72
+							m_nPhonemeCode = 230
+						},
+						{
+							m_flStartTime = 0.72
+							m_flEndTime = 0.736
+							m_nPhonemeCode = 116
+						},
+						{
+							m_flStartTime = 0.736
+							m_flEndTime = 1.024
+							m_nPhonemeCode = 603
+						},
+						{
+							m_flStartTime = 1.024
+							m_flEndTime = 1.392
+							m_nPhonemeCode = 115
+						},
+						{
+							m_flStartTime = 1.392
+							m_flEndTime = 1.408
+							m_nPhonemeCode = 240
+						},
+						{
+							m_flStartTime = 1.408
+							m_flEndTime = 1.52
+							m_nPhonemeCode = 652
+						},
+						{
+							m_flStartTime = 1.52
+							m_flEndTime = 1.536
+							m_nPhonemeCode = 115
+						},
+						{
+							m_flStartTime = 1.536
+							m_flEndTime = 1.552
+							m_nPhonemeCode = 116
+						},
+						{
+							m_flStartTime = 1.552
+							m_flEndTime = 1.568
+							m_nPhonemeCode = 679
+						},
+						{
+							m_flStartTime = 1.568
+							m_flEndTime = 1.728
+							m_nPhonemeCode = 102
+						},
+					]
+					m_EmphasisSamples = [  ]
+					m_morphData = 
+					{
+						m_times = [  ]
+						m_nameHashCodes = [  ]
+						m_nameStrings = [  ]
+						m_samples = [  ]
+						m_flEaseIn = 0.2
+						m_flEaseOut = 0.2
+					}
+				},
+			]
+			m_nRate = 44100
+			m_nFormat = "MP3"
+			m_nChannels = 2
+			m_nLoopStart = -1
+			m_nSampleCount = 77636
+			m_flDuration = 1.760453
+			m_nStreamingSize = 38081
+			m_nLoopEnd = 0
+		}
+		m_pEnvelopeAnalyzer = null
+	}
+}
