@@ -67,7 +67,7 @@ def build_inputs(sim: LockpickingSim) -> list[float]:
     obs.append((sim.boost_mult - 1.0) / max(1e-6, s.max_speed_multiplier - 1.0))
     obs.append(sim.penalty_factor)
     obs.append(1.0 if sim.pick_disabled else 0.0)
-    obs.append(sim.spawn_frequency * s.base_unlock_appear_rate / 3.0)
+    obs.append(sim.spawn_interval / s.base_unlock_appear_rate)
     obs.append(sim.blue_chance / 100.0)
     obs.append(sim.current_speed / max(1e-6, sim.max_speed))
     return obs

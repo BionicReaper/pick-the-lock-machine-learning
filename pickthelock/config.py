@@ -35,7 +35,7 @@ class StageConfig:
     base_unlock_appear_rate: float = 1.4   # m_flBaseUnlockAppearRate
     unlock_appear_increase_rate: float = 0.04  # m_flUnlockAppearIncreaseRate
     min_degrees_between_unlocks: float = 20.0  # m_flMinDegreesBetweenUnlocks
-    unlock_radius: float = 40.0            # m_nUnlockRadius (interpreted: full arc width, deg)
+    unlock_radius: float = 40.0            # m_nUnlockRadius (marker size, board-space px; see SimTuning)
     board_radius: int = 180                # m_nBoardRadius (px, visual only)
     unlock_degree_decrease_rate: float = 3.0  # m_flUnlockDegreeDecreaseRate (deg/s shrink)
 
@@ -71,11 +71,14 @@ class SimTuning:
     # lost on the miss.
     miss_disable_duration: float = 0.55   # s, fitted from red-beam frames
 
-    # FOOTAGE-VERIFIED (fitted): spawns are on an interval timer; the
-    # frequency starts at 1/m_flBaseUnlockAppearRate (1/1.4 = 0.71 Hz) and
-    # increases by m_flUnlockAppearIncreaseRate per successful unlock:
-    #   f = 1/1.4 + 0.04 * unlocks
+    # Spawns are on an interval timer; the interval starts at
+    # m_flBaseUnlockAppearRate and shrinks by m_flUnlockAppearIncreaseRate
+    # per successful unlock:
+    #   interval = 1.4 s - 0.04 s * unlocks
     # (measured spawn gaps: ~1.35 s early game -> ~0.6 s after ~24 unlocks)
+    # The raw formula reaches zero at 35 unlocks; the real game's floor (if
+    # any) is unknown, so the sim clamps here. ASSUMPTION.
+    min_spawn_interval: float = 0.1        # s
 
     # FOOTAGE-VERIFIED: one bar spawns right at game start, and when the
     # board empties a new bar appears almost immediately (~0.1 s).
@@ -98,6 +101,10 @@ class SimTuning:
     # FOOTAGE-VERIFIED: m_nUnlockRadius=40 is the bar's half-arc in *pixels*
     # at m_nBoardRadius=180 px => initial width = 2*40/180 rad ~= 25.46 deg
     # (measured 22-24 deg at spawn with conservative color thresholds).
+    # The same 40 also matches the bar's *radial* half-extent: the wedge
+    # spans dial edge -> rim, ~2*40/180 ~= 44% of the board radius (see the
+    # RING_INNER/RING_OUTER derivation in game.py), so the marker is likely
+    # a 40 px-radius element seated at the rim.
     # Both edges close in at m_flUnlockDegreeDecreaseRate (3 deg/s each,
     # width shrinks 6 deg/s) and the bar despawns at this floor width,
     # giving the observed ~3-3.7 s lifetime.

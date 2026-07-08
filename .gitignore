@@ -1,3 +1,4 @@
 /models/neat-checkpoint-*
 /models/winner-genome.pkl
 /models/fitness_history.csv
+__pycache__/

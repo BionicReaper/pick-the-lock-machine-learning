@@ -111,16 +111,18 @@ class LockpickingSim:
         return self.base_speed * self.stage.max_speed_multiplier
 
     @property
-    def spawn_frequency(self) -> float:
-        """Bar spawns per second. FITTED to footage: 1/1.4 Hz at game start,
-        escalating by m_flUnlockAppearIncreaseRate per successful unlock
-        (measured gaps: ~1.35s early -> ~0.6s after ~24 unlocks)."""
-        return (1.0 / self.stage.base_unlock_appear_rate
-                + self.stage.unlock_appear_increase_rate * self.unlock_count)
+    def spawn_interval(self) -> float:
+        """Seconds between spawns: m_flBaseUnlockAppearRate minus
+        m_flUnlockAppearIncreaseRate per successful unlock (1.4 - 0.04*n).
+        Floored, since the raw formula reaches zero at 35 unlocks."""
+        return max(self.tuning.min_spawn_interval,
+                   self.stage.base_unlock_appear_rate
+                   - self.stage.unlock_appear_increase_rate * self.unlock_count)
 
     @property
-    def spawn_interval(self) -> float:
-        return 1.0 / self.spawn_frequency
+    def spawn_frequency(self) -> float:
+        """Bar spawns per second (1 / spawn_interval)."""
+        return 1.0 / self.spawn_interval
 
     @property
     def pick_disabled(self) -> bool:

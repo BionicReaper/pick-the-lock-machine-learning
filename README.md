@@ -54,9 +54,11 @@ Semantics were verified by frame-by-frame tracking of retail gameplay footage
   radius → initial width 2×40/180 rad ≈ **25.5°** (measured 22–24 at spawn).
   Both edges close at 3°/s (width −6°/s), despawn at ≈3° → ~3–3.7 s life.
   Max 6 on board (rarely binds — good players clear them), ≥20° apart.
-- **Spawning**: interval timer; frequency = `1/1.4 Hz + 0.04 × unlocks`
-  (measured gaps ~1.35 s early → ~0.6 s after ~24 picks). A bar spawns at
-  game start, and an empty board refills within ~0.1 s.
+- **Spawning**: interval timer; interval = `1.4 s − 0.04 s × unlocks`
+  (measured gaps ~1.35 s early → ~0.6 s after ~24 picks). The raw formula
+  hits zero at 35 unlocks; the sim clamps at `min_spawn_interval` = 0.1 s
+  (the real game's floor is unknown). A bar spawns at game start, and an
+  empty board refills within ~0.1 s.
 - Blue bars: 15% chance, +4% pity per orange spawn (reset on blue — pity
   direction is still an assumption); a blue pick grants +1.5 s.
 - Score 1000 per pick (menu confirms; rewards at 6k/12k/18k/24k).
@@ -73,8 +75,8 @@ until a click would hit* (0 while inside the hit zone, so a just-passed but
 still hittable bar stays in slot 0 instead of jumping to "360° away"):
 forward distance/360, reverse distance/360, is-blue, width/initial width;
 then in-zone flag (click now would hit), time remaining/30, boost
-multiplier (norm.), penalty factor, pick-disabled flag, spawn frequency
-(norm.), blue pity chance/100, current speed/max speed. Missing bar slots
+multiplier (norm.), penalty factor, pick-disabled flag, spawn interval/1.4,
+blue pity chance/100, current speed/max speed. Missing bar slots
 pad with (1, 1, 0, 0).
 
 **Outputs (3):** target distance (×360°), average speed = fraction of the

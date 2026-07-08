@@ -2,7 +2,8 @@
 
 Layout mirrors popup_dark_carnival_encounter_lockpicking.xml/.css:
 750x1000 design surface, dungeon background, Slark behind the bars,
-600px board bottom-aligned with an 80px marker ring and a 200px dial.
+600px board bottom-aligned with a 340px dial (the dial art's native
+size; it seats on the matching dark disc baked into lock_background).
 
 Modes:
   human play (default)      LMB pick, RMB hold boost, F9/Esc pause, F3 debug
@@ -27,12 +28,15 @@ from .sim import (LockpickingSim, EV_BAR_SPAWNED, EV_PICKED, EV_MISSED,
                   EV_TIMER_BONUS, EV_GAME_OVER, EV_TARGET_REACHED)
 
 DESIGN_W, DESIGN_H = 750, 1000
-BOARD_CENTER = (369, 551)     # from CSS margins (board 600px, bottom 95px)
-# Markers are radial wedges spanning from the dial edge to the board rim
-# (confirmed from retail screenshots).
-RING_OUTER = 295.0
-RING_INNER = 112.0
-DIAL_SIZE = 200
+BOARD_CENTER = (369, 651)     # from CSS margins (board 600px, bottom 95px)
+# Markers are radial wedges spanning from the dial edge (RING_INNER) to
+# where the bars stop (RING_OUTER); the dial art is sized to seat flush
+# against RING_INNER, and the background disc (BG_SIZE) extends past
+# RING_OUTER as the outer rim border.
+RING_OUTER = 180.0
+RING_INNER = 108.0
+DIAL_SIZE = 216
+BG_SIZE = 470
 
 COL_MARKER = (255, 244, 91)       # #fff45b
 COL_MARKER_BLUE = (203, 241, 255)  # #cbf1ff
@@ -138,7 +142,7 @@ class GameApp:
             self.bg = pygame.transform.smoothscale(a["background"], (DESIGN_W, DESIGN_H))
         self.lock_bg = None
         if a["lock_background"]:
-            self.lock_bg = pygame.transform.smoothscale(a["lock_background"], (700, 700))
+            self.lock_bg = pygame.transform.smoothscale(a["lock_background"], (BG_SIZE, BG_SIZE))
         self.dial = None
         if a["lock_dial"]:
             self.dial = pygame.transform.smoothscale(a["lock_dial"], (DIAL_SIZE, DIAL_SIZE))
@@ -235,7 +239,7 @@ class GameApp:
                 self._fx_miss()
             elif kind == EV_TIMER_BONUS:
                 self.float_texts.append(FloatText(
-                    f"+{ev[1]:.1f}", (BOARD_CENTER[0], BOARD_CENTER[1] - 68), COL_MARKER_BLUE))
+                    f"+{ev[1]:.1f}", (BOARD_CENTER[0], BOARD_CENTER[1] - 84), COL_MARKER_BLUE))
             elif kind == EV_GAME_OVER:
                 self.end_game()
                 return
@@ -340,7 +344,7 @@ class GameApp:
                             elif out[0] == EV_TIMER_BONUS:
                                 self.float_texts.append(FloatText(
                                     f"+{out[1]:.1f}",
-                                    (BOARD_CENTER[0], BOARD_CENTER[1] - 68), COL_MARKER_BLUE))
+                                    (BOARD_CENTER[0], BOARD_CENTER[1] - 84), COL_MARKER_BLUE))
                             elif out[0] == EV_GAME_OVER:
                                 self.end_game()
                     elif ev.button == 3:
@@ -391,7 +395,7 @@ class GameApp:
         if self.shank:
             c.blit(self.shank, (DESIGN_W // 2 - 153 + shake[0], 310 + shake[1]))
         if self.lock_bg:
-            c.blit(self.lock_bg, (BOARD_CENTER[0] - 350 + shake[0], BOARD_CENTER[1] - 350 + shake[1]))
+            c.blit(self.lock_bg, (BOARD_CENTER[0] - BG_SIZE // 2 + shake[0], BOARD_CENTER[1] - BG_SIZE // 2 + shake[1]))
         center = (BOARD_CENTER[0] + shake[0], BOARD_CENTER[1] + shake[1])
 
         if self.sim:
@@ -453,14 +457,14 @@ class GameApp:
         else:
             pygame.draw.circle(c, (20, 18, 16), center, DIAL_SIZE // 2)
         title = self.f_stat_title.render("TIME REMAINING", True, COL_GOLD_DARK)
-        c.blit(title, title.get_rect(center=(center[0], center[1] - 44)))
+        c.blit(title, title.get_rect(center=(center[0], center[1] - 58)))
         timer_col = COL_RED if sim.time_remaining < 5 else COL_GOLD_LIGHT
         tval = self.f_big.render(f"{sim.time_remaining:.1f}", True, timer_col)
-        c.blit(tval, tval.get_rect(center=(center[0], center[1] - 12)))
+        c.blit(tval, tval.get_rect(center=(center[0], center[1] - 16)))
         title2 = self.f_stat_title.render("SCORE", True, COL_GOLD_DARK)
-        c.blit(title2, title2.get_rect(center=(center[0], center[1] + 24)))
+        c.blit(title2, title2.get_rect(center=(center[0], center[1] + 28)))
         sval = self.f_score.render(f"{sim.score:,}", True, COL_GOLD_LIGHT)
-        c.blit(sval, sval.get_rect(center=(center[0], center[1] + 52)))
+        c.blit(sval, sval.get_rect(center=(center[0], center[1] + 56)))
 
     def _ring_wedge(self, surf, col_inner, col_outer, center, a0, a1, step=2.0, bands=6):
         """Radial gradient wedge between angles a0..a1 (deg, clockwise from up)."""
