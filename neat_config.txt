@@ -2,19 +2,23 @@
 fitness_criterion     = max
 fitness_threshold     = 1000000
 no_fitness_termination = False
-pop_size              = 150
+pop_size              = 400
 reset_on_extinction   = True
 
 [DefaultGenome]
 # node activation options
+# richer primitives so hidden nodes can express non-sigmoid logic
+# (relu for piecewise/threshold behaviour, tanh for signed gates)
 activation_default      = sigmoid
-activation_mutate_rate  = 0.0
-activation_options      = sigmoid
+activation_mutate_rate  = 0.1
+activation_options      = sigmoid tanh relu
 
 # node aggregation options
+# product/max let nodes do multiplicative gating and selection
+# (AND-like / winner-take-all logic), kept rare so it stays optional
 aggregation_default     = sum
-aggregation_mutate_rate = 0.0
-aggregation_options     = sum
+aggregation_mutate_rate = 0.05
+aggregation_options     = sum product max
 
 # node bias options
 bias_init_mean          = 0.0
@@ -30,8 +34,10 @@ compatibility_disjoint_coefficient = 1.0
 compatibility_weight_coefficient   = 0.5
 
 # connection add/remove rates
-conn_add_prob           = 0.5
-conn_delete_prob        = 0.3
+# biased toward growth so complex wiring can accumulate instead of
+# being pruned back to the trivial input->output map
+conn_add_prob           = 0.6
+conn_delete_prob        = 0.1
 
 # connection enable options
 enabled_default         = True
@@ -41,8 +47,9 @@ feed_forward            = True
 initial_connection      = full_direct
 
 # node add/remove rates
-node_add_prob           = 0.3
-node_delete_prob        = 0.15
+# strong net-positive add pressure so hidden depth actually develops
+node_add_prob           = 0.5
+node_delete_prob        = 0.05
 
 # network parameters (must match pickthelock.observations)
 num_hidden              = 0
@@ -50,13 +57,15 @@ num_inputs              = 32
 num_outputs             = 3
 
 # node response options
+# per-node gain: start at 1.0 but allow mild drift so nodes can sharpen
+# or soften into gates instead of every node having identical response
 response_init_mean      = 1.0
 response_init_stdev     = 0.0
 response_max_value      = 30.0
 response_min_value      = -30.0
-response_mutate_power   = 0.0
-response_mutate_rate    = 0.0
-response_replace_rate   = 0.0
+response_mutate_power   = 0.1
+response_mutate_rate    = 0.1
+response_replace_rate   = 0.02
 
 # connection weight options
 weight_init_mean        = 0.0
@@ -68,13 +77,17 @@ weight_mutate_rate      = 0.8
 weight_replace_rate     = 0.1
 
 [DefaultSpeciesSet]
-compatibility_threshold = 3.0
+# lower threshold -> more, finer species, giving new topologies their own
+# niche to mature in instead of being out-competed immediately
+compatibility_threshold = 2.5
 
 [DefaultStagnation]
 species_fitness_func = max
-max_stagnation       = 15
-species_elitism      = 2
+# complex structures need more generations before they pay off; don't cull
+# a promising lineage too early
+max_stagnation       = 25
+species_elitism      = 3
 
 [DefaultReproduction]
-elitism            = 2
+elitism            = 3
 survival_threshold = 0.2
