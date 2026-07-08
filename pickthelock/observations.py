@@ -1,11 +1,11 @@
 """NEAT input/output encoding.
 
-Inputs (NUM_INPUTS = 20), all roughly normalized to 0..1:
+Inputs (NUM_INPUTS = 32), all roughly normalized to 0..1:
   Bars still inside their reaction delay (bar.perceived False, see the
   controller) are invisible here: they fill no slot and never set in_zone,
   so prompts fired before the reaction lands (e.g. right after a click)
   cannot act on a bar the "human" hasn't noticed yet.
-  For each of the N_TRACKED_BARS = 3 nearest perceived bars, sorted by
+  For each of the N_TRACKED_BARS = 6 nearest perceived bars, sorted by
   *travel needed until a click would hit* (0 while the pick is inside the
   bar's hit zone, so a bar just passed but still hittable stays in slot 0
   instead of teleporting to "a full lap away"):
@@ -15,14 +15,14 @@ Inputs (NUM_INPUTS = 20), all roughly normalized to 0..1:
     2. is_blue (0/1)
     3. current width / initial width
     (missing slots are padded with fwd=1, rev=1, blue=0, width=0)
-  12. in_zone: 1 if a click right now would hit a perceived bar
-  13. time remaining / time limit (can exceed 1 after blue bonuses)
-  14. boost multiplier, normalized: (mult-1)/(max-1)
-  15. penalty factor (1 = healthy, <1 = slowed)
-  16. pick_disabled: 1 while clicks are ignored (red pick)
-  17. spawn frequency / (3 / base interval)
-  18. current blue pity chance / 100
-  19. current speed / max possible speed
+  24. in_zone: 1 if a click right now would hit a perceived bar
+  25. time remaining / time limit (can exceed 1 after blue bonuses)
+  26. boost multiplier, normalized: (mult-1)/(max-1)
+  27. penalty factor (1 = healthy, <1 = slowed)
+  28. pick_disabled: 1 while clicks are ignored (red pick)
+  29. spawn frequency / (3 / base interval)
+  30. current blue pity chance / 100
+  31. current speed / max possible speed
 
 Outputs (NUM_OUTPUTS = 3), expected in 0..1 (sigmoid):
   0. target distance   -> degrees = value * 360 (min clamped by tuning)
@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from .sim import LockpickingSim, Bar
 
-N_TRACKED_BARS = 3
+N_TRACKED_BARS = 6
 NUM_INPUTS = N_TRACKED_BARS * 4 + 8
 NUM_OUTPUTS = 3
 
