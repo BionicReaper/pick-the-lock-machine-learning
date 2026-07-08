@@ -80,7 +80,9 @@ class FloatText:
 
 class GameApp:
     def __init__(self, ai_genome_path: str | None = None, seed: int | None = None,
-                 muted: bool = False, scale: float | None = None):
+                 muted: bool = False, scale: float | None = None,
+                 inaccuracy: float = 0.0, reaction_time_ms: float = 0.0,
+                 reaction_time_std: float = 0.05):
         pygame.init()
         try:
             pygame.mixer.init()
@@ -98,6 +100,9 @@ class GameApp:
         self.assets = Assets(muted=muted)
         self.clock = pygame.time.Clock()
         self.seed = seed
+        self.inaccuracy = inaccuracy
+        self.reaction_time_ms = reaction_time_ms
+        self.reaction_time_std = reaction_time_std
         self.state = MENU
         self.debug = False
         self.wall_time = 0.0
@@ -190,7 +195,10 @@ class GameApp:
     def start_game(self):
         seed = self.seed if self.seed is not None else random.randrange(1 << 30)
         self.sim = LockpickingSim(DEFAULT_STAGE, DEFAULT_TUNING, seed=seed)
-        self.ctrl = ScheduledClickController(self.sim)
+        self.ctrl = ScheduledClickController(
+            self.sim, inaccuracy=self.inaccuracy,
+            reaction_time_ms=self.reaction_time_ms,
+            reaction_time_std=self.reaction_time_std)
         self.particles.clear()
         self.float_texts.clear()
         self.ai_outputs = None
@@ -243,9 +251,12 @@ class GameApp:
             elif kind == EV_GAME_OVER:
                 self.end_game()
                 return
-            if kind in (EV_BAR_SPAWNED, EV_TARGET_REACHED):
+            if kind == EV_TARGET_REACHED:
                 reprompt = True
-        if self.net and self.state == RUNNING and (reprompt or not self.ctrl.active):
+            elif kind == EV_BAR_SPAWNED and self.net:
+                self.ctrl.schedule_prompt()
+        if self.net and self.state == RUNNING and (
+                reprompt or self.ctrl.prompt_due or not self.ctrl.active):
             self._ai_prompt()
 
     def _fx_pick(self, bar):
@@ -632,8 +643,24 @@ def main(argv=None):
     parser.add_argument("--seed", type=int, default=None, help="fixed RNG seed")
     parser.add_argument("--mute", action="store_true", help="disable audio")
     parser.add_argument("--scale", type=float, default=None, help="window scale factor")
+    parser.add_argument("--inaccuracy", type=float, default=0.0,
+                        help="AI aim error in [0, 1]: gaussian displacement of the "
+                             "target distance, scaled by current pick speed")
+    parser.add_argument("--reaction_time_ms", type=float, default=0.0,
+                        help="AI reaction delay (ms, >= 0) before reprompting on a new bar spawn")
+    parser.add_argument("--reaction_time_standard_deviation", type=float, default=0.05,
+                        help="relative gaussian jitter of the reaction delay "
+                             "(>= 0, typically 0-0.2)")
     args = parser.parse_args(argv)
-    GameApp(ai_genome_path=args.ai, seed=args.seed, muted=args.mute, scale=args.scale).run()
+    if not 0.0 <= args.inaccuracy <= 1.0:
+        parser.error("--inaccuracy must be between 0 and 1")
+    if args.reaction_time_ms < 0.0:
+        parser.error("--reaction_time_ms must be non-negative")
+    if args.reaction_time_standard_deviation < 0.0:
+        parser.error("--reaction_time_standard_deviation must be non-negative")
+    GameApp(ai_genome_path=args.ai, seed=args.seed, muted=args.mute, scale=args.scale,
+            inaccuracy=args.inaccuracy, reaction_time_ms=args.reaction_time_ms,
+            reaction_time_std=args.reaction_time_standard_deviation).run()
 
 
 if __name__ == "__main__":

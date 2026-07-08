@@ -11,6 +11,11 @@ whenever the scheduled target distance is reached. Each prompt produces
 (target distance, boost-hold fraction, click?) which is handed to the
 cancellable ScheduledClickController.
 
+Human-imperfection knobs: --inaccuracy adds gaussian aim error to each
+prompted target distance (scaled by current pick speed); --reaction_time_ms
+(jittered by --reaction_time_standard_deviation) delays the reprompt that
+follows a new bar spawn by that many milliseconds worth of ticks.
+
 Usage:
     .venv\\Scripts\\python.exe train_neat.py --generations 100
     .venv\\Scripts\\python.exe train_neat.py --resume models/neat-checkpoint-42
@@ -30,6 +35,7 @@ import csv
 import multiprocessing
 import os
 import pickle
+import random
 import time
 
 import neat
@@ -45,34 +51,57 @@ CONFIG_PATH = os.path.join(ROOT, "neat_config.txt")
 
 EVAL_RUNS = 15               # headless simulations per genome (5-10)
 W_AVG, W_WORST, W_BEST = 0.5, 0.25, 0.25
-MAX_EPISODE_SECONDS = 600.0  # hard safety cap (timer bonuses extend games)
+MAX_EPISODE_SECONDS = 1600.0  # hard safety cap (timer bonuses extend games)
 
 
 # --------------------------------------------------------------------- #
 # episode
 
-def run_episode(net, seed: int) -> int:
+def run_episode(net, seed: int, inaccuracy: float = 0.0,
+                reaction_time_ms: float = 0.0, reaction_time_std: float = 0.05) -> int:
     sim = LockpickingSim(DEFAULT_STAGE, DEFAULT_TUNING, seed=seed)
     ctrl = ScheduledClickController(sim)
 
     def prompt():
         dist, boost_frac, do_click = decode_outputs(net.activate(build_inputs(sim)), sim)
+        if inaccuracy > 0.0:
+            # human aim error: the faster the pick moves, the sloppier the aim
+            dist += sim.current_speed * inaccuracy * random.gauss(0.0, 1.0)
         ctrl.schedule(dist, boost_frac, do_click)
 
     prompt()
-    max_ticks = int(MAX_EPISODE_SECONDS * DEFAULT_TUNING.tick_rate)
-    for _ in range(max_ticks):
+    tick_rate = DEFAULT_TUNING.tick_rate
+    max_ticks = int(MAX_EPISODE_SECONDS * tick_rate)
+    scheduled_reactions: set[int] = set()
+    for tick in range(max_ticks):
+        should_prompt = False
         events = ctrl.step()
         if sim.game_over:
             break
-        if any(ev[0] in (EV_BAR_SPAWNED, EV_TARGET_REACHED) for ev in events) or not ctrl.active:
+        for ev in events:
+            if ev[0] == EV_BAR_SPAWNED:
+                # unforeseeable stimulus: the reprompt lands only after a
+                # human-like (jittered) reaction delay
+                delay = ((reaction_time_ms / 1000.0) * tick_rate
+                         * (1.0 + random.gauss(0.0, 1.0) * reaction_time_std))
+                scheduled_reactions.add(tick + max(0, round(delay)))
+            elif ev[0] == EV_TARGET_REACHED:
+                should_prompt = True
+        if tick in scheduled_reactions:
+            scheduled_reactions.discard(tick)
+            should_prompt = True
+        if not ctrl.active:
+            should_prompt = True
+        if should_prompt:
             prompt()
     return sim.score
 
 
-def eval_genome(genome, config, seeds) -> float:
+def eval_genome(genome, config, seeds, inaccuracy: float = 0.0,
+                reaction_time_ms: float = 0.0, reaction_time_std: float = 0.05) -> float:
     net = neat.nn.FeedForwardNetwork.create(genome, config)
-    scores = [run_episode(net, s) for s in seeds]
+    scores = [run_episode(net, s, inaccuracy, reaction_time_ms, reaction_time_std)
+              for s in seeds]
     return (W_AVG * (sum(scores) / len(scores))
             + W_WORST * min(scores)
             + W_BEST * max(scores))
@@ -80,8 +109,8 @@ def eval_genome(genome, config, seeds) -> float:
 
 # top-level so Windows 'spawn' processes can pickle it
 def _eval_task(args):
-    genome_id, genome, config, seeds = args
-    return genome_id, eval_genome(genome, config, seeds)
+    genome_id, genome, config, seeds, inaccuracy, reaction_ms, reaction_std = args
+    return genome_id, eval_genome(genome, config, seeds, inaccuracy, reaction_ms, reaction_std)
 
 
 def _atomic_pickle(path: str, obj) -> None:
@@ -96,11 +125,16 @@ def _atomic_pickle(path: str, obj) -> None:
 # training driver
 
 class Trainer:
-    def __init__(self, config, workers: int, runs: int, seed_base: int):
+    def __init__(self, config, workers: int, runs: int, seed_base: int,
+                 inaccuracy: float = 0.0, reaction_time_ms: float = 0.0,
+                 reaction_time_std: float = 0.05):
         self.config = config
         self.workers = workers
         self.runs = runs
         self.seed_base = seed_base
+        self.inaccuracy = inaccuracy
+        self.reaction_time_ms = reaction_time_ms
+        self.reaction_time_std = reaction_time_std
         self.generation = 0
         self.best_fitness = float("-inf")
         self.history: list[tuple[int, float, float]] = []
@@ -111,7 +145,8 @@ class Trainer:
     def eval_genomes(self, genomes, config):
         # same seeds for every genome within a generation, new set each gen
         seeds = [self.seed_base + self.generation * 7919 + i for i in range(self.runs)]
-        tasks = [(gid, g, config, seeds) for gid, g in genomes]
+        tasks = [(gid, g, config, seeds, self.inaccuracy,
+                  self.reaction_time_ms, self.reaction_time_std) for gid, g in genomes]
         if self.pool is not None:
             results = dict(self.pool.map(_eval_task, tasks))
         else:
@@ -158,10 +193,24 @@ def main():
                         default=max(1, (os.cpu_count() or 2) - 1))
     parser.add_argument("--pop", type=int, default=None, help="override population size")
     parser.add_argument("--seed-base", type=int, default=1234)
+    parser.add_argument("--inaccuracy", type=float, default=0.0,
+                        help="aim error in [0, 1]: gaussian displacement of the target "
+                             "distance, scaled by current pick speed")
+    parser.add_argument("--reaction_time_ms", type=float, default=0.0,
+                        help="reaction delay (ms, >= 0) before reprompting on a new bar spawn")
+    parser.add_argument("--reaction_time_standard_deviation", type=float, default=0.05,
+                        help="relative gaussian jitter of the reaction delay "
+                             "(>= 0, typically 0-0.2)")
     parser.add_argument("--resume", default=None, help="path to a neat-checkpoint-N file")
     parser.add_argument("--smoke", action="store_true",
                         help="tiny run (pop 16, 2 gens, 3 sims, 1 worker) to verify the pipeline")
     args = parser.parse_args()
+    if not 0.0 <= args.inaccuracy <= 1.0:
+        parser.error("--inaccuracy must be between 0 and 1")
+    if args.reaction_time_ms < 0.0:
+        parser.error("--reaction_time_ms must be non-negative")
+    if args.reaction_time_standard_deviation < 0.0:
+        parser.error("--reaction_time_standard_deviation must be non-negative")
 
     os.makedirs(MODELS_DIR, exist_ok=True)
 
@@ -178,7 +227,9 @@ def main():
     else:
         pop = neat.Population(config)
 
-    trainer = Trainer(config, args.workers, args.runs, args.seed_base)
+    trainer = Trainer(config, args.workers, args.runs, args.seed_base,
+                      args.inaccuracy, args.reaction_time_ms,
+                      args.reaction_time_standard_deviation)
     if args.resume:
         # keep the per-generation seed rotation moving forward after a resume
         trainer.generation = pop.generation

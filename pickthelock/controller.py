@@ -12,21 +12,36 @@ pending one — e.g. when a new bar spawns and the model changes its mind.
 The controller owns sim stepping via step(): it splits the tick that would
 overshoot the target so the click lands on the exact scheduled distance
 (sub-tick precision), then finishes the remainder of the tick.
+
+Human-imperfection knobs (all default to "perfect play"):
+  inaccuracy         gaussian aim error added to every scheduled distance,
+                     proportional to the current pick speed
+  reaction_time_ms   delay before reacting to a new bar spawn; arm it with
+                     schedule_prompt() and poll prompt_due each tick
+  reaction_time_std  relative gaussian jitter on that delay
 """
 
 from __future__ import annotations
+
+import random
 
 from .sim import LockpickingSim, EV_TARGET_REACHED
 
 
 class ScheduledClickController:
-    def __init__(self, sim: LockpickingSim):
+    def __init__(self, sim: LockpickingSim, inaccuracy: float = 0.0,
+                 reaction_time_ms: float = 0.0, reaction_time_std: float = 0.05):
         self.sim = sim
+        self.inaccuracy = inaccuracy
+        self.reaction_time_ms = reaction_time_ms
+        self.reaction_time_std = reaction_time_std
         self.active = False
         self.target_dist = 0.0
         self.boost_dist = 0.0
         self.do_click = True
         self._start_traveled = 0.0
+        self.tick_counter = 0
+        self.scheduled_prompts: set[int] = set()
 
     # ------------------------------------------------------------------ #
 
@@ -37,6 +52,8 @@ class ScheduledClickController:
         is held (held first, then released — per spec 0.5 = boost for the
         first half of the way).
         """
+        if self.inaccuracy > 0.0:
+            distance_deg += self.sim.current_speed * self.inaccuracy * random.gauss(0.0, 1.0)
         distance_deg = max(self.sim.tuning.min_target_distance_deg, float(distance_deg))
         boost_hold_frac = min(1.0, max(0.0, float(boost_hold_frac)))
         self.target_dist = distance_deg
@@ -49,6 +66,21 @@ class ScheduledClickController:
         """Discard the pending schedule (model changed its mind)."""
         self.active = False
         self.sim.rmb_held = False
+
+    def schedule_prompt(self) -> None:
+        """Request a prompt after a human-like reaction delay.
+
+        Call on unforeseeable stimuli (a new bar spawn); the tick at which
+        the reaction lands is added to scheduled_prompts and prompt_due
+        turns True on that tick."""
+        delay = ((self.reaction_time_ms / 1000.0) * self.sim.tuning.tick_rate
+                 * (1.0 + random.gauss(0.0, 1.0) * self.reaction_time_std))
+        self.scheduled_prompts.add(self.tick_counter + max(0, round(delay)))
+
+    @property
+    def prompt_due(self) -> bool:
+        """True while a reaction scheduled via schedule_prompt() lands on this tick."""
+        return self.tick_counter in self.scheduled_prompts
 
     @property
     def progress(self) -> float:
@@ -76,6 +108,9 @@ class ScheduledClickController:
         Returns all sim events raised during the tick, plus
         (EV_TARGET_REACHED, clicked_events) when the scheduled distance is hit.
         """
+        # previous tick is over: its reaction entry (if any) has been consumed
+        self.scheduled_prompts.discard(self.tick_counter)
+        self.tick_counter += 1
         sim = self.sim
         if not self.active:
             return sim.tick()
