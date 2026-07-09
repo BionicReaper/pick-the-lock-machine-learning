@@ -9,3 +9,6 @@ __pycache__/
 /models/neat-checkpoint-*
 /models/fitness_history.csv
 /models/winner_genome.pkl
+
+# neat config
+neat_config.txt
