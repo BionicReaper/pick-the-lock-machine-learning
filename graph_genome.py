@@ -112,7 +112,8 @@ def fmt_w(x: float) -> str:
 
 
 def fmt_bias(b: float) -> str:
-    return f"{b:+.2f}".replace("+", "+").replace("-", "−")
+    # sign detached with a space, to match the '± w·child' term formatting
+    return ("−" if b < 0 else "+") + " " + f"{abs(b):.2f}"
 
 
 # --------------------------------------------------------------------------- #
@@ -258,7 +259,11 @@ def build_graph(genome, schema, schema_id: int, num_outputs: int,
 
 
 def _derive_formulas(outputs, all_nodes, incoming, input_labels, schema_id):
-    """Expand each output as a pretty-printed tree of act(bias + sum(w*child)).
+    """Expand each output as a pretty-printed tree of act(bias + response·agg(w·child…)).
+
+    Mirrors neat-python's node evaluation: sum aggregation folds the weighted
+    terms in additively, while min/max/product (or any other aggregation) wrap
+    them in agg(…); a non-unit response shows as an explicit gain factor.
 
     Returns one block of newline-separated lines per output: the bias and every
     signed term on its own line, and each nested activation indented one level
@@ -268,23 +273,43 @@ def _derive_formulas(outputs, all_nodes, incoming, input_labels, schema_id):
     INDENT = "  "
 
     def block(key: int, budget: list[int]) -> list[str]:
-        """Lines for act(bias + ...); first line is the header, last is ')'."""
+        """Lines for act(bias + response·agg(...)); first line is the header
+        'fn(', last is ')'."""
         node = all_nodes[key]
         act = getattr(node, "activation", "sigmoid")
         fn = "σ" if act == "sigmoid" else html.escape(act)
+        agg = getattr(node, "aggregation", "sum")
+        resp = getattr(node, "response", 1.0)
         preds = sorted(incoming[key], key=lambda p: -abs(p[1]))
         budget[0] -= len(preds)
-        body = [fmt_bias(node.bias)]                # constant term leads
-        for src, w in preds:
-            prefix = ("−" if w < 0 else "+") + " " + fmt_w(w) + "·"
+
+        def child_lines(src: int, prefix: str) -> list[str]:
             if src < 0:                             # input leaf
-                body.append(prefix + html.escape(code_label(input_labels[src])))
-            elif budget[0] <= 0:                    # keep very large nets bounded
-                body.append(prefix + '<span class="hid">n{}</span>'.format(src))
-            else:                                   # nested activation: open, recurse
-                inner = block(src, budget)
-                body.append(prefix + inner[0])      # 'sign coeff.fn('
-                body.extend(inner[1:])              # its body + closing paren
+                return [prefix + html.escape(code_label(input_labels[src]))]
+            if budget[0] <= 0:                      # keep very large nets bounded
+                return [prefix + '<span class="hid">n{}</span>'.format(src)]
+            inner = block(src, budget)              # nested activation
+            return [prefix + inner[0]] + inner[1:]  # 'sign coeff.fn(' + body + ')'
+
+        body = [fmt_bias(node.bias)]                # constant term leads
+        if preds:
+            terms: list[str] = []
+            for src, w in preds:
+                prefix = ("−" if w < 0 else "+") + " " + fmt_w(w) + "·"
+                terms += child_lines(src, prefix)
+            # explicit response gain unless it is (effectively) 1.0
+            if abs(resp - 1.0) < 5e-3:
+                resp_sign, resp_factor = "+", ""
+            else:
+                resp_sign = "−" if resp < 0 else "+"
+                resp_factor = fmt_w(resp) + "·"
+            if agg == "sum" and not resp_factor:
+                body += terms                       # bias + Σ ±w·child (flat)
+            else:                                   # bias + resp·agg(±w·child, …)
+                opener = "" if agg == "sum" else html.escape(agg)
+                body.append(resp_sign + " " + resp_factor + opener + "(")
+                body += [INDENT + ln for ln in terms]
+                body.append(")")
         # wrap: header, one-level-indented body, closing paren
         return [fn + "("] + [INDENT + ln for ln in body] + [")"]
 
@@ -612,8 +637,9 @@ _TEMPLATE = r"""<!doctype html>
         if (isIn) return '<b>' + n.label + '</b> <span class="t2 mono">(' + n.key + ')</span><br><span class="t2">' + n.sub + '</span>';
         var head = n.sub;
         var fn = (n.act === "sigmoid" || !n.act) ? "sigmoid" : n.act;
+        var agg = n.agg || "sum";
         return '<b class="mono">' + head + '</b><br><span class="t2">bias <span class="mono">' +
-          fmt(n.bias) + '</span> · ' + fn + (n.live ? "" : " · dead end") + '</span>';
+          fmt(n.bias) + '</span> · ' + fn + ' · ' + agg + (n.live ? "" : " · dead end") + '</span>';
       }, function () { focusNode(n.key); }, unfocus);
     });
   });
