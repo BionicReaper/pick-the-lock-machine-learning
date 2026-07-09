@@ -264,6 +264,14 @@ def main():
     if args.resume:
         pop = neat.Checkpointer.restore_checkpoint(args.resume)
         pop.config = config
+        # neat-python bug: the new-node-id counter lives on the config, not
+        # the checkpoint, so after restore it's None and gets seeded from a
+        # single genome's max node id -- lower than ids already present in
+        # other restored genomes, which later collides (assert new_id not in
+        # node_dict). Reseed it above the max node id across the whole pop.
+        max_node_id = max((k for g in pop.population.values() for k in g.nodes),
+                          default=config.genome_config.num_outputs)
+        config.genome_config.node_indexer = itertools.count(max_node_id + 1)
     else:
         pop = neat.Population(config)
 
