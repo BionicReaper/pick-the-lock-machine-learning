@@ -3,3 +3,4 @@
 /models/fitness_history.csv
 __pycache__/
 winner_genome.pkl
+*.html
