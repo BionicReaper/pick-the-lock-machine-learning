@@ -6,17 +6,18 @@ Prompting is always the same two steps, driven by the caller:
     outputs = schema.activate(net, sim)   # 1. encode state, run the net
     schema.interpret(outputs, ctrl)        # 2. decode outputs, drive the controller
 
-Step 1 (`activate`) is generic for every schema: it runs the schema's own
-`build_inputs(sim)` encoding through the net and returns the raw outputs.
+Step 1 (`activate`) is generic for every schema: it runs the schema's ordered
+`input_dictionary` of feature keys through observations.build_inputs and then
+through the net, returning the raw outputs. Swapping the input encoding is thus
+just choosing a different tuple of keys (see observations.FEATURE_MAP).
 Step 2 (`interpret`) is the schema's decision-to-action mapping: it reads the
 raw outputs and calls whatever it wants on the controller's interface (schedule
 a click, reprompt, a time-based regime, ...). It returns the decoded action so
 callers can display it, but its effect is on `ctrl`.
 
-A schema therefore only has to supply two swappable pieces — `build_inputs`
-(the input encoding) and `interpret` (the output regime) — plus its I/O sizes:
-
-  num_inputs / num_outputs   override the NEAT config for this schema
+A schema therefore supplies two swappable pieces — `input_dictionary` (which
+feature keys, in what order) and `interpret` (the output regime) — plus its
+output size. num_inputs is derived from the input_dictionary length.
 
 Schema 0 reproduces the original hard-wired behavior, so existing genomes keep
 working with no flag (default 0).
@@ -25,34 +26,38 @@ All game rules stay in the single neat_config.txt; only the I/O sizes differ per
 schema and are applied onto the loaded config by apply_config_io() before any
 genome or network is created.
 
-Adding a schema: write build_inputs_vN / decode_outputs_vN in observations.py,
-write an interpret_vN here, then add an entry to SCHEMAS. Nothing in the entry
-points or the config file needs to change.
+Adding a schema: register any new feature keys in observations.FEATURE_MAP,
+write an interpret_vN here, then add an entry to SCHEMAS with its ordered
+input_dictionary. Nothing in the entry points or the config file changes.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Sequence
 
 from .observations import (
     build_inputs,
     decode_outputs,
-    NUM_INPUTS,
+    FEATURE_MAP,
+    DEFAULT_INPUT_KEYS,
     NUM_OUTPUTS,
 )
 
 
 @dataclass(frozen=True)
 class Schema:
-    build_inputs: Callable[..., list[float]]      # sim -> input vector
-    interpret: Callable[..., tuple]               # (outputs, ctrl) -> decoded action
-    num_inputs: int
+    input_dictionary: Sequence[str]      # ordered feature keys into FEATURE_MAP
+    interpret: Callable[..., tuple]       # (outputs, ctrl) -> decoded action
     num_outputs: int
+
+    @property
+    def num_inputs(self) -> int:
+        return len(self.input_dictionary)
 
     def activate(self, net, sim):
         """Encode the sim state with this schema and run it through the net."""
-        return net.activate(self.build_inputs(sim))
+        return net.activate(build_inputs(sim, self.input_dictionary))
 
 
 # --------------------------------------------------------------------------- #
@@ -75,9 +80,16 @@ def interpret_scheduled(outputs, ctrl) -> tuple:
 # registry
 
 SCHEMAS: dict[int, Schema] = {
-    0: Schema(build_inputs=build_inputs, interpret=interpret_scheduled,
-              num_inputs=NUM_INPUTS, num_outputs=NUM_OUTPUTS),
+    0: Schema(input_dictionary=DEFAULT_INPUT_KEYS, interpret=interpret_scheduled,
+              num_outputs=NUM_OUTPUTS),
 }
+
+# fail fast on a typo'd or unregistered key in any schema's input_dictionary
+for _sid, _schema in SCHEMAS.items():
+    _unknown = [k for k in _schema.input_dictionary if k not in FEATURE_MAP]
+    if _unknown:
+        raise KeyError(f"schema {_sid} references unknown feature keys {_unknown}; "
+                       f"register them in observations.FEATURE_MAP")
 
 
 def get_schema(n: int) -> Schema:

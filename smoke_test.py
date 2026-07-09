@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pickthelock.config import DEFAULT_STAGE, DEFAULT_TUNING
 from pickthelock.controller import ScheduledClickController
-from pickthelock.observations import build_inputs, NUM_INPUTS
+from pickthelock.observations import build_inputs, DEFAULT_INPUT_KEYS, NUM_INPUTS
 from pickthelock.schemas import SCHEMAS
 from pickthelock.sim import LockpickingSim, EV_BAR_SPAWNED, EV_TARGET_REACHED
 
@@ -64,13 +64,13 @@ def main():
     sim = LockpickingSim(seed=42)
     for _ in range(120):
         sim.tick()
-    obs = build_inputs(sim)
+    obs = build_inputs(sim, DEFAULT_INPUT_KEYS)
     assert len(obs) == NUM_INPUTS, f"expected {NUM_INPUTS} inputs, got {len(obs)}"
     print(f"  {len(obs)} inputs OK: {[round(v, 3) for v in obs]}")
 
     print("== schema registry ==")
     for sid, schema in sorted(SCHEMAS.items()):
-        n = len(schema.build_inputs(sim))
+        n = len(build_inputs(sim, schema.input_dictionary))
         assert n == schema.num_inputs, (
             f"schema {sid}: build_inputs gave {n} values, num_inputs={schema.num_inputs}")
         print(f"  schema {sid}: {n} inputs / {schema.num_outputs} outputs OK")

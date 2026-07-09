@@ -1,28 +1,42 @@
 """NEAT input/output encoding.
 
-Inputs (NUM_INPUTS = 32), all roughly normalized to 0..1:
-  Bars still inside their reaction delay (bar.perceived False, see the
-  controller) are invisible here: they fill no slot and never set in_zone,
-  so prompts fired before the reaction lands (e.g. right after a click)
-  cannot act on a bar the "human" hasn't noticed yet.
-  For each of the N_TRACKED_BARS = 6 nearest perceived bars, sorted by
-  *travel needed until a click would hit* (0 while the pick is inside the
-  bar's hit zone, so a bar just passed but still hittable stays in slot 0
-  instead of teleporting to "a full lap away"):
-    0. forward distance to center / 360   (in current travel direction)
-    1. reverse distance to center / 360   (360 - forward; small when the
-       center was just passed)
-    2. is_blue (0/1)
-    3. current width / initial width
-    (missing slots are padded with fwd=1, rev=1, blue=0, width=0)
-  24. in_zone: 1 if a click right now would hit a perceived bar
-  25. time remaining / time limit (can exceed 1 after blue bonuses)
-  26. boost multiplier, normalized: (mult-1)/(max-1)
-  27. penalty factor (1 = healthy, <1 = slowed)
-  28. pick_disabled: 1 while clicks are ignored (red pick)
-  29. spawn frequency / (3 / base interval)
-  30. current blue pity chance / 100
-  31. current speed / max possible speed
+Inputs are described as *feature keys* rather than a fixed vector. FEATURE_MAP
+maps every available key to the function that retrieves it, and sample_state()
+runs the whole map once to produce {key: value} for the current sim state. A
+schema then picks an ordered subset of those keys (its input_dictionary), and
+build_inputs(sim, input_dictionary) returns exactly those values, in that order.
+
+Key naming convention:  <property>_<format>[_<parameter>]
+
+  <property>   what is measured, e.g. bar_forward_distance, current_speed
+  <format>     how it is encoded — keep this explicit so future encodings of
+               the same property don't need a rename:
+                 percentage  normalized to ~0..1 by a reference/max
+                 ratio       a raw factor already in a bounded range
+                 boolean     0.0 / 1.0
+               (future examples: radians, degrees for angles)
+  <parameter>  optional index, e.g. the bar slot (1 = nearest)
+
+Available keys (32 for the default schema):
+  For each of the N_TRACKED_BARS = 6 nearest *perceived* bars, ranked by travel
+  needed until a click would hit (0 while the pick is inside the hit zone), slot
+  1 = nearest.  Bars still inside their reaction delay (bar.perceived False, see
+  the controller) are invisible: they fill no slot and never set the hit-zone
+  flag, so prompts fired before the reaction lands can't act on a bar the
+  "human" hasn't noticed yet.  Missing slots pad to fwd=1, rev=1, blue=0, w=0.
+    bar_forward_distance_percentage_<i>   forward travel to center / 360
+    bar_reverse_distance_percentage_<i>   (360 - forward) / 360
+    bar_is_blue_boolean_<i>               1 if blue
+    bar_width_percentage_<i>              current width / initial width
+  Globals:
+    pick_in_hit_zone_boolean       1 if a click right now would hit a perceived bar
+    time_remaining_percentage      time remaining / time limit (can exceed 1)
+    boost_multiplier_percentage    (boost_mult - 1) / (max_mult - 1)
+    penalty_factor_ratio           1 = healthy, <1 = slowed
+    pick_disabled_boolean          1 while clicks are ignored (red pick)
+    spawn_interval_ratio           spawn interval / base spawn interval
+    blue_chance_percentage         current blue pity chance / 100
+    current_speed_percentage       current speed / max possible speed
 
 Outputs (NUM_OUTPUTS = 3), expected in 0..1 (sigmoid):
   0. target distance   -> degrees = value * 360 (min clamped by tuning)
@@ -32,10 +46,11 @@ Outputs (NUM_OUTPUTS = 3), expected in 0..1 (sigmoid):
 
 from __future__ import annotations
 
+from typing import Callable, Sequence
+
 from .sim import LockpickingSim, Bar
 
 N_TRACKED_BARS = 6
-NUM_INPUTS = N_TRACKED_BARS * 4 + 8
 NUM_OUTPUTS = 3
 
 
@@ -52,32 +67,144 @@ def travel_to_hit(sim: LockpickingSim, bar: Bar) -> float:
     return raw - half
 
 
-def build_inputs(sim: LockpickingSim) -> list[float]:
-    s = sim.stage
-    obs: list[float] = []
-    # bars inside their reaction delay (bar.perceived False) don't exist yet
-    # as far as the model knows — even for prompts fired by its own clicks
-    ordered = sorted(((travel_to_hit(sim, b), sim.ang_fwd(b.center), b)
-                      for b in sim.bars if b.perceived), key=lambda p: p[0])
-    for i in range(N_TRACKED_BARS):
-        if i < len(ordered):
-            _, fwd, bar = ordered[i]
-            obs.append(fwd / 360.0)
-            obs.append((360.0 - fwd) / 360.0)
-            obs.append(1.0 if bar.is_blue else 0.0)
-            obs.append(bar.width / sim.initial_bar_width)
-        else:
-            obs.extend((1.0, 1.0, 0.0, 0.0))
-    hittable = sim.hittable_bar()
-    obs.append(1.0 if hittable is not None and hittable.perceived else 0.0)
-    obs.append(sim.time_remaining / s.time_limit)
-    obs.append((sim.boost_mult - 1.0) / max(1e-6, s.max_speed_multiplier - 1.0))
-    obs.append(sim.penalty_factor)
-    obs.append(1.0 if sim.pick_disabled else 0.0)
-    obs.append(sim.spawn_interval / s.base_unlock_appear_rate)
-    obs.append(sim.blue_chance / 100.0)
-    obs.append(sim.current_speed / max(1e-6, sim.max_speed))
-    return obs
+# --------------------------------------------------------------------------- #
+# feature retrieval
+
+class _Sampler:
+    """Shared context the feature getters read from.
+
+    Sorts the perceived bars once (nearest-first by travel-to-hit) so every
+    per-bar getter is a cheap index instead of re-sorting.
+    """
+    __slots__ = ("sim", "bars")
+
+    def __init__(self, sim: LockpickingSim):
+        self.sim = sim
+        # (travel_to_hit, forward_distance, bar), nearest-first
+        self.bars = sorted(
+            ((travel_to_hit(sim, b), sim.ang_fwd(b.center), b)
+             for b in sim.bars if b.perceived),
+            key=lambda p: p[0])
+
+
+# per-bar getters: factories closing over the 0-based slot index
+
+def _bar_forward_distance_percentage(idx: int) -> Callable[[_Sampler], float]:
+    def get(s: _Sampler) -> float:
+        return s.bars[idx][1] / 360.0 if idx < len(s.bars) else 1.0
+    return get
+
+
+def _bar_reverse_distance_percentage(idx: int) -> Callable[[_Sampler], float]:
+    def get(s: _Sampler) -> float:
+        return (360.0 - s.bars[idx][1]) / 360.0 if idx < len(s.bars) else 1.0
+    return get
+
+
+def _bar_is_blue_boolean(idx: int) -> Callable[[_Sampler], float]:
+    def get(s: _Sampler) -> float:
+        return 1.0 if idx < len(s.bars) and s.bars[idx][2].is_blue else 0.0
+    return get
+
+
+def _bar_width_percentage(idx: int) -> Callable[[_Sampler], float]:
+    def get(s: _Sampler) -> float:
+        return s.bars[idx][2].width / s.sim.initial_bar_width if idx < len(s.bars) else 0.0
+    return get
+
+
+# global getters
+
+def _pick_in_hit_zone_boolean(s: _Sampler) -> float:
+    hittable = s.sim.hittable_bar()
+    return 1.0 if hittable is not None and hittable.perceived else 0.0
+
+
+def _time_remaining_percentage(s: _Sampler) -> float:
+    return s.sim.time_remaining / s.sim.stage.time_limit
+
+
+def _boost_multiplier_percentage(s: _Sampler) -> float:
+    return (s.sim.boost_mult - 1.0) / max(1e-6, s.sim.stage.max_speed_multiplier - 1.0)
+
+
+def _penalty_factor_ratio(s: _Sampler) -> float:
+    return s.sim.penalty_factor
+
+
+def _pick_disabled_boolean(s: _Sampler) -> float:
+    return 1.0 if s.sim.pick_disabled else 0.0
+
+
+def _spawn_interval_ratio(s: _Sampler) -> float:
+    return s.sim.spawn_interval / s.sim.stage.base_unlock_appear_rate
+
+
+def _blue_chance_percentage(s: _Sampler) -> float:
+    return s.sim.blue_chance / 100.0
+
+
+def _current_speed_percentage(s: _Sampler) -> float:
+    return s.sim.current_speed / max(1e-6, s.sim.max_speed)
+
+
+# --------------------------------------------------------------------------- #
+# registry: key -> getter. Extend this to add a new observation.
+
+FEATURE_MAP: dict[str, Callable[[_Sampler], float]] = {}
+for _slot in range(N_TRACKED_BARS):
+    _n = _slot + 1  # keys are 1-indexed: slot 1 is the nearest bar
+    FEATURE_MAP[f"bar_forward_distance_percentage_{_n}"] = _bar_forward_distance_percentage(_slot)
+    FEATURE_MAP[f"bar_reverse_distance_percentage_{_n}"] = _bar_reverse_distance_percentage(_slot)
+    FEATURE_MAP[f"bar_is_blue_boolean_{_n}"] = _bar_is_blue_boolean(_slot)
+    FEATURE_MAP[f"bar_width_percentage_{_n}"] = _bar_width_percentage(_slot)
+FEATURE_MAP["pick_in_hit_zone_boolean"] = _pick_in_hit_zone_boolean
+FEATURE_MAP["time_remaining_percentage"] = _time_remaining_percentage
+FEATURE_MAP["boost_multiplier_percentage"] = _boost_multiplier_percentage
+FEATURE_MAP["penalty_factor_ratio"] = _penalty_factor_ratio
+FEATURE_MAP["pick_disabled_boolean"] = _pick_disabled_boolean
+FEATURE_MAP["spawn_interval_ratio"] = _spawn_interval_ratio
+FEATURE_MAP["blue_chance_percentage"] = _blue_chance_percentage
+FEATURE_MAP["current_speed_percentage"] = _current_speed_percentage
+
+
+# The default schema's ordered inputs: every per-bar feature interleaved per
+# slot, then the globals — reproducing the original build_inputs(sim) vector.
+DEFAULT_INPUT_KEYS: tuple[str, ...] = tuple(
+    key
+    for n in range(1, N_TRACKED_BARS + 1)
+    for key in (f"bar_forward_distance_percentage_{n}",
+                f"bar_reverse_distance_percentage_{n}",
+                f"bar_is_blue_boolean_{n}",
+                f"bar_width_percentage_{n}")
+) + (
+    "pick_in_hit_zone_boolean",
+    "time_remaining_percentage",
+    "boost_multiplier_percentage",
+    "penalty_factor_ratio",
+    "pick_disabled_boolean",
+    "spawn_interval_ratio",
+    "blue_chance_percentage",
+    "current_speed_percentage",
+)
+
+NUM_INPUTS = len(DEFAULT_INPUT_KEYS)
+
+
+def sample_state(sim: LockpickingSim) -> dict[str, float]:
+    """Retrieve every available feature for the current sim state."""
+    s = _Sampler(sim)
+    return {key: get(s) for key, get in FEATURE_MAP.items()}
+
+
+def build_inputs(sim: LockpickingSim, input_dictionary: Sequence[str]) -> list[float]:
+    """Activation inputs for one schema: the selected feature keys, in order."""
+    state = sample_state(sim)
+    try:
+        return [state[key] for key in input_dictionary]
+    except KeyError as e:
+        raise KeyError(f"input key {e.args[0]!r} is not in FEATURE_MAP; "
+                       f"available keys: {sorted(FEATURE_MAP)}") from None
 
 
 def decode_outputs(outputs, sim: LockpickingSim) -> tuple[float, float, bool]:
