@@ -56,9 +56,10 @@ def saved_dir(reaction_time_ms: float, reaction_time_std: float,
                         param_subpath(reaction_time_ms, reaction_time_std, inaccuracy))
 
 
-# saved genomes are named "<index>_<timestamp>_<score>_best_genome.pkl"; the
-# leading integer is the auto-incrementing index the consumers select by.
-_SAVED_RE = re.compile(r"^(\d+)_.+_" + re.escape(BEST_GENOME_NAME) + r"$")
+# freshly promoted genomes are named "<index>_<timestamp>_<score>_best_genome.pkl",
+# but any "<index>_<anything>.pkl" is accepted so hand-placed/migrated genomes
+# still resolve. The leading integer is the index the consumers select by.
+_SAVED_RE = re.compile(r"^(\d+)_.+\.pkl$")
 
 
 def saved_genome_filename(index: int, score, when: float | None = None) -> str:
