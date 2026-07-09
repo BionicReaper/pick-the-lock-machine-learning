@@ -23,14 +23,22 @@ episode length; raising it makes long-surviving genomes cost more to evaluate.
 
 Usage:
     .venv\\Scripts\\python.exe train_neat.py --generations 100
-    .venv\\Scripts\\python.exe train_neat.py --resume models/neat-checkpoint-42
+    .venv\\Scripts\\python.exe train_neat.py --resume PATH/neat-checkpoint-42
     .venv\\Scripts\\python.exe train_neat.py --smoke        (tiny sanity run)
 
-Outputs (models/):
-    best_genome.pkl        best genome seen so far (updated on improvement)
-    winner_genome.pkl      best genome of the final generation
-    fitness_history.csv    per-generation best/mean fitness
-    neat-checkpoint-N      resumable population checkpoints
+While training, everything for a run is written under a private scratch
+directory keyed by the human knobs and a per-process run id (see
+pickthelock.paths), so parallel runs never collide:
+
+    models/temp/<rt_ms>/<rt_std>/<inacc>/<run_id>/
+        best_genome.pkl        best genome seen so far (updated on improvement)
+        winner_genome.pkl      best genome of the final generation
+        fitness_history.csv    per-generation best/mean fitness
+        checkpoints/neat-checkpoint-N   resumable population checkpoints
+
+On termination (organic or Ctrl+C) the best genome is promoted to
+    models/saved/<rt_ms>/<rt_std>/<inacc>/best_genome.pkl
+unless it was a --smoke run.
 """
 
 from __future__ import annotations
@@ -46,13 +54,13 @@ import time
 
 import neat
 
+from pickthelock import paths
 from pickthelock.config import DEFAULT_STAGE, DEFAULT_TUNING
 from pickthelock.controller import ScheduledClickController
 from pickthelock.schemas import SCHEMAS, get_schema, apply_config_io
 from pickthelock.sim import LockpickingSim, EV_BAR_SPAWNED, EV_TARGET_REACHED
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
-MODELS_DIR = os.path.join(ROOT, "models")
+ROOT = paths.ROOT
 CONFIG_PATH = os.path.join(ROOT, "neat_config.txt")
 
 EVAL_RUNS = 15               # headless simulations per genome (5-10)
@@ -161,6 +169,7 @@ def _atomic_pickle(path: str, obj) -> None:
 
 class Trainer:
     def __init__(self, config, workers: int, runs: int, seed_base: int,
+                 run_dir: str,
                  inaccuracy: float = 0.0, reaction_time_ms: float = 0.0,
                  reaction_time_std: float = 0.05,
                  max_episode_seconds: float = MAX_EPISODE_SECONDS,
@@ -169,6 +178,9 @@ class Trainer:
         self.workers = workers
         self.runs = runs
         self.seed_base = seed_base
+        self.run_dir = run_dir
+        self.best_genome_path = os.path.join(run_dir, paths.BEST_GENOME_NAME)
+        self.history_path = os.path.join(run_dir, paths.HISTORY_NAME)
         self.inaccuracy = inaccuracy
         self.reaction_time_ms = reaction_time_ms
         self.reaction_time_std = reaction_time_std
@@ -203,14 +215,13 @@ class Trainer:
         self.history.append((self.generation, best, mean))
         if best > self.best_fitness and best_genome is not None:
             self.best_fitness = best
-            _atomic_pickle(os.path.join(MODELS_DIR, "best_genome.pkl"), best_genome)
+            _atomic_pickle(self.best_genome_path, best_genome)
             print(f"  ** new best fitness {best:.0f} (gen {self.generation}) "
-                  f"-> models/best_genome.pkl")
+                  f"-> {os.path.relpath(self.best_genome_path, ROOT)}")
         self.generation += 1
 
     def save_history(self):
-        path = os.path.join(MODELS_DIR, "fitness_history.csv")
-        with open(path, "w", newline="", encoding="utf-8") as fh:
+        with open(self.history_path, "w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
             w.writerow(["generation", "best_fitness", "mean_fitness"])
             w.writerows(self.history)
@@ -264,7 +275,13 @@ def main():
     if args.max_episode_seconds <= 0.0:
         parser.error("--max_episode_seconds must be positive")
 
-    os.makedirs(MODELS_DIR, exist_ok=True)
+    # private per-process scratch dir so parallel runs never collide
+    run_id = os.getpid()
+    run_dir = paths.temp_run_dir(args.reaction_time_ms,
+                                 args.reaction_time_standard_deviation,
+                                 args.inaccuracy, run_id)
+    checkpoints_dir = paths.checkpoints_dir(run_dir)
+    os.makedirs(checkpoints_dir, exist_ok=True)  # also creates run_dir
 
     config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
                          neat.DefaultSpeciesSet, neat.DefaultStagnation, CONFIG_PATH)
@@ -288,7 +305,7 @@ def main():
     else:
         pop = neat.Population(config)
 
-    trainer = Trainer(config, args.workers, args.runs, args.seed_base,
+    trainer = Trainer(config, args.workers, args.runs, args.seed_base, run_dir,
                       args.inaccuracy, args.reaction_time_ms,
                       args.reaction_time_standard_deviation,
                       args.max_episode_seconds, args.schema)
@@ -299,9 +316,10 @@ def main():
     pop.add_reporter(neat.StdOutReporter(True))
     stats = neat.StatisticsReporter()
     pop.add_reporter(stats)
+    ckpt_prefix = paths.checkpoint_prefix(run_dir)
     pop.add_reporter(neat.Checkpointer(
         generation_interval=10, time_interval_seconds=None,
-        filename_prefix=os.path.join(MODELS_DIR, "neat-checkpoint-")))
+        filename_prefix=ckpt_prefix))
 
     t0 = time.time()
     winner = None
@@ -309,20 +327,42 @@ def main():
         winner = pop.run(trainer.eval_genomes, args.generations)
     except KeyboardInterrupt:
         gen = trainer.generation
-        ckpt = neat.Checkpointer(
-            filename_prefix=os.path.join(MODELS_DIR, "neat-checkpoint-"))
+        ckpt = neat.Checkpointer(filename_prefix=ckpt_prefix)
         ckpt.save_checkpoint(config, pop.population, pop.species, gen)
-        print(f"\nInterrupted at generation {gen}. Best so far is safe in "
-              f"models/best_genome.pkl (saved on every improvement).")
-        print(f"Resume with:  train_neat.py --resume models/neat-checkpoint-{gen}")
+        print(f"\nInterrupted at generation {gen}. The best genome so far is safe "
+              f"(saved on every improvement) and is promoted below.")
+        print(f"Resume with:  train_neat.py --resume "
+              f"{os.path.relpath(ckpt_prefix, ROOT)}{gen}")
     finally:
         trainer.save_history()
         trainer.close(terminate=winner is None)
 
     if winner is not None:
-        _atomic_pickle(os.path.join(MODELS_DIR, "winner_genome.pkl"), winner)
+        _atomic_pickle(os.path.join(run_dir, paths.WINNER_GENOME_NAME), winner)
+
+    # promote the best genome from the scratch dir to its parameter-keyed home
+    # under a unique "<index>_<timestamp>_<score>_best_genome.pkl" name, so
+    # successive runs on the same knobs never overwrite each other.
+    # (skip for smoke runs — they only exercise the pipeline)
+    played_path = trainer.best_genome_path
+    played_index = 0
+    if not args.smoke and os.path.exists(trainer.best_genome_path):
+        rt_ms = args.reaction_time_ms
+        rt_std = args.reaction_time_standard_deviation
+        inacc = args.inaccuracy
+        played_index = paths.next_saved_index(rt_ms, rt_std, inacc)
+        saved = os.path.join(paths.saved_dir(rt_ms, rt_std, inacc),
+                             paths.saved_genome_filename(
+                                 played_index, int(round(trainer.best_fitness))))
+        os.makedirs(os.path.dirname(saved), exist_ok=True)
+        os.replace(trainer.best_genome_path, saved)  # atomic move within models/
+        played_path = saved
+        print(f"Promoted best genome (index {played_index}) "
+              f"-> {os.path.relpath(saved, ROOT)}")
+
     print(f"\nDone in {time.time() - t0:.0f}s. Best fitness {trainer.best_fitness:.0f}.")
-    print("Watch it play:  .venv\\Scripts\\python.exe play.py --ai models/best_genome.pkl")
+    print(f"Watch it play:  .venv\\Scripts\\python.exe play.py "
+          f"--ai {os.path.relpath(played_path, ROOT)}")
 
 
 if __name__ == "__main__":

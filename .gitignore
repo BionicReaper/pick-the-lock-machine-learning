@@ -1,6 +1,11 @@
-/models/neat-checkpoint-*
-/models/winner-genome.pkl
-/models/fitness_history.csv
-__pycache__/
-winner_genome.pkl
+# per-run training scratch: checkpoints, history, in-progress + winner genomes
+/models/temp/
+# rendered genome graphs (mirror of the saved/ tree)
+/models/graphs/
 *.html
+__pycache__/
+
+# legacy flat layout (pre saved/temp/graphs restructure)
+/models/neat-checkpoint-*
+/models/fitness_history.csv
+/models/winner_genome.pkl

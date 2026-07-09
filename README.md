@@ -14,12 +14,33 @@ Source 2 Viewer; textures and sounds come from the same VPK and live in
 .venv\Scripts\python.exe play.py                       # play it yourself
 .venv\Scripts\python.exe train_neat.py --smoke         # verify training pipeline
 .venv\Scripts\python.exe train_neat.py --generations 100
-.venv\Scripts\python.exe play.py --ai models/best_genome.pkl   # watch the AI
+.venv\Scripts\python.exe play.py --ai                  # watch the AI (infers the genome)
 ```
 
 Controls: **LMB** pick, **RMB (hold)** speed boost, **F9/Esc** pause,
 **F3** debug overlay (hidden variables, AI inputs/outputs, AI target ghost),
 **Space** start/restart.
+
+### Model files (`models/`)
+
+Training artifacts are organised into three parallel trees, each keyed by the
+human knobs `reaction_time_ms/reaction_time_standard_deviation/inaccuracy`
+(defaults → `0.0/0.05/0.0`); see `pickthelock/paths.py`.
+
+| Tree | Contents |
+|---|---|
+| `models/saved/<knobs>/<index>_<timestamp>_<score>_best_genome.pkl` | promoted best genomes for a parameter set; the index auto-increments so runs never overwrite |
+| `models/temp/<knobs>/<run_id>/` | per-run scratch: `best_genome.pkl`, `winner_genome.pkl`, `fitness_history.csv`, `checkpoints/` |
+| `models/graphs/<knobs>/…​.html` | `graph_genome.py` renders here, mirroring the saved filename |
+
+A training run writes into its own `temp/…/<run_id>/` (the run id is the process
+id, so parallel runs never collide); on termination — normal or Ctrl+C — the
+best genome is promoted into `saved/` under a unique
+`<index>_<timestamp>_<score>_best_genome.pkl` name (a `--smoke` run skips this).
+`play.py --ai` with no path infers the genome from the human knobs, picking the
+one with `--index N` (default 0); pass an explicit path to `--ai` or to
+`graph_genome.py` to target a specific file. So the usual loop is just
+`train_neat.py …` then `play.py --ai` with the same knobs.
 
 ## Layout
 
@@ -30,6 +51,7 @@ Controls: **LMB** pick, **RMB (hold)** speed boost, **F9/Esc** pause,
 | `pickthelock/controller.py` | Cancellable "click after X° with Y boost" scheduler |
 | `pickthelock/observations.py` | NEAT input vector (18) / output decoding (3) |
 | `pickthelock/game.py`, `assets.py` | pygame client using the extracted Dota art/sounds |
+| `pickthelock/paths.py` | `models/` layout: the `saved`/`temp`/`graphs` trees keyed by human knobs |
 | `train_neat.py`, `neat_config.txt` | NEAT training (parallel, checkpointed) |
 | `smoke_test.py` | Determinism + heuristic-bot sanity checks |
 | `extracted/` | Decompiled Dota assets (`game.vdata`, PNGs, MP3s, layout XML/CSS) |

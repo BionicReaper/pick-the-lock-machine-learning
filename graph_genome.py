@@ -1,6 +1,6 @@
 """Render a trained NEAT genome as a layered network graph (standalone HTML).
 
-    python graph_genome.py models/best_genome.pkl [--schema N] [--out page.html] [--open]
+    python graph_genome.py models/saved/0.0/0.05/0.0/best_genome.pkl [--schema N] [--out page.html] [--open]
 
 The genome pickle stores only nodes and connections, not which I/O *schema* it
 was trained on, so pass the same --schema you trained/play with (default 0);
@@ -25,10 +25,11 @@ from collections import deque
 
 # labels come from the game's schema/feature registry, so this file never has to
 # hardcode the input vector (which changes as schemas are added).
+from pickthelock import paths
 from pickthelock.schemas import get_schema, SCHEMAS
 from pickthelock.observations import NUM_OUTPUTS
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = paths.ROOT
 
 # Per-schema output names (the genome only knows output indices 0..k-1). Falls
 # back to "output N" for schemas not listed here.
@@ -320,10 +321,12 @@ def render_page(title: str, subtitle: str, data: dict) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Graph a NEAT genome as a layered network (HTML).")
-    ap.add_argument("model", help="path to a genome .pkl (e.g. models/best_genome.pkl)")
+    ap.add_argument("model", help="path to a genome .pkl (e.g. models/saved/0.0/0.05/0.0/best_genome.pkl)")
     ap.add_argument("--schema", type=int, default=0,
                     help="I/O schema the genome trained on (default 0); sets input labels")
-    ap.add_argument("--out", default=None, help="output .html path (default: alongside the model)")
+    ap.add_argument("--out", default=None,
+                    help="output .html path (default: mirror a saved/ model into the "
+                         "graphs/ tree, else alongside the model)")
     ap.add_argument("--no-open", dest="open", action="store_false",
                     help="don't open the page in a browser (it opens by default)")
     ap.add_argument("--title", default=None, help="override the page title")
@@ -365,7 +368,10 @@ def main() -> int:
             "model": model_rel}
     page = render_page(title, subtitle, data)
 
-    out = args.out or (os.path.splitext(args.model)[0] + ".html")
+    # default: mirror a saved/ model into the parallel graphs/ tree; an
+    # out-of-tree model just gets a sibling .html (see paths.graph_path_for_model)
+    out = args.out or paths.graph_path_for_model(args.model)
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     with open(out, "w", encoding="utf-8") as fh:
         fh.write(page)
 
