@@ -1,25 +1,27 @@
 """Filesystem layout for trained genomes, checkpoints and graphs.
 
 Everything lives under ``models/``, split into three parallel trees keyed by
-the human-imperfection knobs a genome was trained with
-(``reaction_time_ms`` / ``reaction_time_standard_deviation`` / ``inaccuracy``)::
+the I/O schema and the human-imperfection knobs a genome was trained with
+(``schema`` / ``reaction_time_ms`` / ``reaction_time_standard_deviation`` /
+``inaccuracy``)::
 
-    models/saved/<rt_ms>/<rt_std>/<inacc>/<index>_<timestamp>_<score>_best_genome.pkl
-    models/graphs/<rt_ms>/<rt_std>/<inacc>/<index>_<timestamp>_<score>_best_genome.html
-    models/temp/<rt_ms>/<rt_std>/<inacc>/<run_id>/
+    models/saved/<schema>/<rt_ms>/<rt_std>/<inacc>/<index>_<timestamp>_<score>_best_genome.pkl
+    models/graphs/<schema>/<rt_ms>/<rt_std>/<inacc>/<index>_<timestamp>_<score>_best_genome.html
+    models/temp/<schema>/<rt_ms>/<rt_std>/<inacc>/<run_id>/
         best_genome.pkl
         winner_genome.pkl
         fitness_history.csv
         checkpoints/neat-checkpoint-N
 
-So a run with the default human knobs (reaction_time_ms=0.0,
-reaction_time_standard_deviation=0.05, inaccuracy=0.0) lands under
-``.../0.0/0.05/0.0/``. The extra ``<run_id>`` layer under ``temp/`` keeps
-parallel training processes from clobbering each other's in-progress files;
-on termination the best genome is promoted from there into ``saved/`` under a
-unique ``<index>_<timestamp>_<score>_best_genome.pkl`` name (the index
-auto-increments per parameter set, so successive runs never overwrite). The
-consumers (play.py, graph_genome.py) select one by its index, defaulting to 0.
+So a run with the default schema and human knobs (schema=0,
+reaction_time_ms=0.0, reaction_time_standard_deviation=0.05, inaccuracy=0.0)
+lands under ``.../0/0.0/0.05/0.0/``. The extra ``<run_id>`` layer under
+``temp/`` keeps parallel training processes from clobbering each other's
+in-progress files; on termination the best genome is promoted from there into
+``saved/`` under a unique ``<index>_<timestamp>_<score>_best_genome.pkl`` name
+(the index auto-increments per parameter set, so successive runs never
+overwrite). The consumers (play.py, graph_genome.py) select one by its index,
+defaulting to 0.
 """
 
 from __future__ import annotations
@@ -41,19 +43,20 @@ CHECKPOINTS_NAME = "checkpoints"
 CHECKPOINT_PREFIX = "neat-checkpoint-"
 
 
-def param_subpath(reaction_time_ms: float, reaction_time_std: float,
+def param_subpath(schema: int, reaction_time_ms: float, reaction_time_std: float,
                   inaccuracy: float) -> str:
-    """'<rt_ms>/<rt_std>/<inacc>' folder triple for these human knobs."""
-    return os.path.join(str(reaction_time_ms), str(reaction_time_std), str(inaccuracy))
+    """'<schema>/<rt_ms>/<rt_std>/<inacc>' folder path for these parameters."""
+    return os.path.join(str(schema), str(reaction_time_ms),
+                        str(reaction_time_std), str(inaccuracy))
 
 
 # --------------------------------------------------------------------- #
 # saved/ — the promoted best genome for a parameter set
 
-def saved_dir(reaction_time_ms: float, reaction_time_std: float,
+def saved_dir(schema: int, reaction_time_ms: float, reaction_time_std: float,
               inaccuracy: float) -> str:
     return os.path.join(SAVED_DIR,
-                        param_subpath(reaction_time_ms, reaction_time_std, inaccuracy))
+                        param_subpath(schema, reaction_time_ms, reaction_time_std, inaccuracy))
 
 
 # freshly promoted genomes are named "<index>_<timestamp>_<score>_best_genome.pkl",
@@ -67,10 +70,10 @@ def saved_genome_filename(index: int, score, when: float | None = None) -> str:
     return f"{index}_{ts}_{score}_{BEST_GENOME_NAME}"
 
 
-def saved_genomes(reaction_time_ms: float, reaction_time_std: float,
+def saved_genomes(schema: int, reaction_time_ms: float, reaction_time_std: float,
                   inaccuracy: float) -> list[tuple[int, str]]:
-    """(index, path) for every saved genome at these knobs, sorted by index."""
-    d = saved_dir(reaction_time_ms, reaction_time_std, inaccuracy)
+    """(index, path) for every saved genome at these parameters, sorted by index."""
+    d = saved_dir(schema, reaction_time_ms, reaction_time_std, inaccuracy)
     found = []
     if os.path.isdir(d):
         for name in os.listdir(d):
@@ -81,25 +84,25 @@ def saved_genomes(reaction_time_ms: float, reaction_time_std: float,
     return found
 
 
-def next_saved_index(reaction_time_ms: float, reaction_time_std: float,
+def next_saved_index(schema: int, reaction_time_ms: float, reaction_time_std: float,
                      inaccuracy: float) -> int:
     """The index a newly promoted genome should take (max existing + 1, else 0)."""
-    existing = saved_genomes(reaction_time_ms, reaction_time_std, inaccuracy)
+    existing = saved_genomes(schema, reaction_time_ms, reaction_time_std, inaccuracy)
     return existing[-1][0] + 1 if existing else 0
 
 
-def new_saved_genome_path(reaction_time_ms: float, reaction_time_std: float,
+def new_saved_genome_path(schema: int, reaction_time_ms: float, reaction_time_std: float,
                           inaccuracy: float, score, when: float | None = None) -> str:
     """Full destination path for a freshly promoted genome (auto-assigned index)."""
-    index = next_saved_index(reaction_time_ms, reaction_time_std, inaccuracy)
+    index = next_saved_index(schema, reaction_time_ms, reaction_time_std, inaccuracy)
     name = saved_genome_filename(index, score, when)
-    return os.path.join(saved_dir(reaction_time_ms, reaction_time_std, inaccuracy), name)
+    return os.path.join(saved_dir(schema, reaction_time_ms, reaction_time_std, inaccuracy), name)
 
 
-def find_saved_genome(reaction_time_ms: float, reaction_time_std: float,
+def find_saved_genome(schema: int, reaction_time_ms: float, reaction_time_std: float,
                       inaccuracy: float, index: int = 0) -> str | None:
     """Path of the saved genome with this index, or None if absent."""
-    for idx, path in saved_genomes(reaction_time_ms, reaction_time_std, inaccuracy):
+    for idx, path in saved_genomes(schema, reaction_time_ms, reaction_time_std, inaccuracy):
         if idx == index:
             return path
     return None
@@ -108,10 +111,10 @@ def find_saved_genome(reaction_time_ms: float, reaction_time_std: float,
 # --------------------------------------------------------------------- #
 # graphs/ — mirrors the saved tree, one .html per model
 
-def graphs_dir(reaction_time_ms: float, reaction_time_std: float,
+def graphs_dir(schema: int, reaction_time_ms: float, reaction_time_std: float,
                inaccuracy: float) -> str:
     return os.path.join(GRAPHS_DIR,
-                        param_subpath(reaction_time_ms, reaction_time_std, inaccuracy))
+                        param_subpath(schema, reaction_time_ms, reaction_time_std, inaccuracy))
 
 
 def graph_path_for_model(model_path: str) -> str:
@@ -133,10 +136,10 @@ def graph_path_for_model(model_path: str) -> str:
 # --------------------------------------------------------------------- #
 # temp/ — per-run scratch space (history, in-progress genomes, checkpoints)
 
-def temp_run_dir(reaction_time_ms: float, reaction_time_std: float,
+def temp_run_dir(schema: int, reaction_time_ms: float, reaction_time_std: float,
                  inaccuracy: float, run_id) -> str:
     return os.path.join(TEMP_DIR,
-                        param_subpath(reaction_time_ms, reaction_time_std, inaccuracy),
+                        param_subpath(schema, reaction_time_ms, reaction_time_std, inaccuracy),
                         str(run_id))
 
 

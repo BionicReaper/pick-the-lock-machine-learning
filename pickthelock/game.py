@@ -642,12 +642,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Pick the Lock — standalone")
     parser.add_argument("--ai", metavar="GENOME_PKL", nargs="?", const="", default=None,
                         help="watch a trained NEAT genome play; with no path given, "
-                             "the genome is inferred from the human knobs, i.e. "
-                             "models/saved/<rt_ms>/<rt_std>/<inacc>/<index>_..._best_genome.pkl")
+                             "the genome is inferred from the schema and human knobs, i.e. "
+                             "models/saved/<schema>/<rt_ms>/<rt_std>/<inacc>/<index>_..._best_genome.pkl")
     parser.add_argument("--index", type=int, default=0,
-                        help="when --ai infers the genome from the human knobs, pick the "
-                             "saved genome with this index (default 0); ignored if --ai "
-                             "is given an explicit path")
+                        help="when --ai infers the genome from the schema and human knobs, "
+                             "pick the saved genome with this index (default 0); ignored if "
+                             "--ai is given an explicit path")
     parser.add_argument("--seed", type=int, default=None, help="fixed RNG seed")
     parser.add_argument("--mute", action="store_true", help="disable audio")
     parser.add_argument("--scale", type=float, default=None, help="window scale factor")
@@ -674,19 +674,19 @@ def main(argv=None):
         parser.error("--reaction_time_standard_deviation must be non-negative")
     ai_path = args.ai
     if ai_path is not None and not ai_path:
-        # --ai with no path: infer the saved genome for these human knobs + index
+        # --ai with no path: infer the saved genome for this schema + knobs + index
         ai_path = paths.find_saved_genome(
-            args.reaction_time_ms, args.reaction_time_standard_deviation,
+            args.schema, args.reaction_time_ms, args.reaction_time_standard_deviation,
             args.inaccuracy, args.index)
         if ai_path is None:
-            avail = paths.saved_genomes(args.reaction_time_ms,
+            avail = paths.saved_genomes(args.schema, args.reaction_time_ms,
                                         args.reaction_time_standard_deviation,
                                         args.inaccuracy)
             have = ", ".join(str(i) for i, _ in avail) or "none"
             parser.error(
-                f"no saved genome with index {args.index} for these human knobs "
-                f"(available indices: {have}).\n"
-                "train one with train_neat.py using the same human knobs, "
+                f"no saved genome with index {args.index} for schema {args.schema} "
+                f"and these human knobs (available indices: {have}).\n"
+                "train one with train_neat.py using the same schema and knobs, "
                 "or pass an explicit path with --ai <path>.")
     if ai_path is not None and not os.path.isfile(ai_path):
         parser.error(f"AI genome not found: {ai_path}")

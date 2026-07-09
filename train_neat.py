@@ -30,14 +30,14 @@ While training, everything for a run is written under a private scratch
 directory keyed by the human knobs and a per-process run id (see
 pickthelock.paths), so parallel runs never collide:
 
-    models/temp/<rt_ms>/<rt_std>/<inacc>/<run_id>/
+    models/temp/<schema>/<rt_ms>/<rt_std>/<inacc>/<run_id>/
         best_genome.pkl        best genome seen so far (updated on improvement)
         winner_genome.pkl      best genome of the final generation
         fitness_history.csv    per-generation best/mean fitness
         checkpoints/neat-checkpoint-N   resumable population checkpoints
 
 On termination (organic or Ctrl+C) the best genome is promoted to
-    models/saved/<rt_ms>/<rt_std>/<inacc>/best_genome.pkl
+    models/saved/<schema>/<rt_ms>/<rt_std>/<inacc>/<index>_<timestamp>_<score>_best_genome.pkl
 unless it was a --smoke run.
 """
 
@@ -277,7 +277,7 @@ def main():
 
     # private per-process scratch dir so parallel runs never collide
     run_id = os.getpid()
-    run_dir = paths.temp_run_dir(args.reaction_time_ms,
+    run_dir = paths.temp_run_dir(args.schema, args.reaction_time_ms,
                                  args.reaction_time_standard_deviation,
                                  args.inaccuracy, run_id)
     checkpoints_dir = paths.checkpoints_dir(run_dir)
@@ -347,11 +347,12 @@ def main():
     played_path = trainer.best_genome_path
     played_index = 0
     if not args.smoke and os.path.exists(trainer.best_genome_path):
+        sch = args.schema
         rt_ms = args.reaction_time_ms
         rt_std = args.reaction_time_standard_deviation
         inacc = args.inaccuracy
-        played_index = paths.next_saved_index(rt_ms, rt_std, inacc)
-        saved = os.path.join(paths.saved_dir(rt_ms, rt_std, inacc),
+        played_index = paths.next_saved_index(sch, rt_ms, rt_std, inacc)
+        saved = os.path.join(paths.saved_dir(sch, rt_ms, rt_std, inacc),
                              paths.saved_genome_filename(
                                  played_index, int(round(trainer.best_fitness))))
         os.makedirs(os.path.dirname(saved), exist_ok=True)

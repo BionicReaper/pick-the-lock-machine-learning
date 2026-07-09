@@ -24,14 +24,15 @@ Controls: **LMB** pick, **RMB (hold)** speed boost, **F9/Esc** pause,
 ### Model files (`models/`)
 
 Training artifacts are organised into three parallel trees, each keyed by the
-human knobs `reaction_time_ms/reaction_time_standard_deviation/inaccuracy`
-(defaults → `0.0/0.05/0.0`); see `pickthelock/paths.py`.
+I/O schema and the human knobs
+`<schema>/reaction_time_ms/reaction_time_standard_deviation/inaccuracy`
+(defaults → `0/0.0/0.05/0.0`); see `pickthelock/paths.py`.
 
 | Tree | Contents |
 |---|---|
-| `models/saved/<knobs>/<index>_<timestamp>_<score>_best_genome.pkl` | promoted best genomes for a parameter set; the index auto-increments so runs never overwrite |
-| `models/temp/<knobs>/<run_id>/` | per-run scratch: `best_genome.pkl`, `winner_genome.pkl`, `fitness_history.csv`, `checkpoints/` |
-| `models/graphs/<knobs>/…​.html` | `graph_genome.py` renders here, mirroring the saved filename |
+| `models/saved/<schema>/<knobs>/<index>_<timestamp>_<score>_best_genome.pkl` | promoted best genomes for a parameter set; the index auto-increments so runs never overwrite |
+| `models/temp/<schema>/<knobs>/<run_id>/` | per-run scratch: `best_genome.pkl`, `winner_genome.pkl`, `fitness_history.csv`, `checkpoints/` |
+| `models/graphs/<schema>/<knobs>/…​.html` | `graph_genome.py` renders here, mirroring the saved filename |
 
 A training run writes into its own `temp/…/<run_id>/` (the run id is the process
 id, so parallel runs never collide); on termination — normal or Ctrl+C — the

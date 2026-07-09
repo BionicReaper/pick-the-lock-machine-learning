@@ -1,6 +1,6 @@
 """Render a trained NEAT genome as a layered network graph (standalone HTML).
 
-    python graph_genome.py models/saved/0.0/0.05/0.0/best_genome.pkl [--schema N] [--out page.html] [--open]
+    python graph_genome.py models/saved/0/0.0/0.05/0.0/0_..._best_genome.pkl [--schema N] [--out page.html] [--open]
 
 The genome pickle stores only nodes and connections, not which I/O *schema* it
 was trained on, so pass the same --schema you trained/play with (default 0);
@@ -321,7 +321,7 @@ def render_page(title: str, subtitle: str, data: dict) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Graph a NEAT genome as a layered network (HTML).")
-    ap.add_argument("model", help="path to a genome .pkl (e.g. models/saved/0.0/0.05/0.0/best_genome.pkl)")
+    ap.add_argument("model", help="path to a genome .pkl (e.g. models/saved/0/0.0/0.05/0.0/0_..._best_genome.pkl)")
     ap.add_argument("--schema", type=int, default=0,
                     help="I/O schema the genome trained on (default 0); sets input labels")
     ap.add_argument("--out", default=None,
