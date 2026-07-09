@@ -237,7 +237,7 @@ class Trainer:
 
 def main():
     parser = argparse.ArgumentParser(description="Train a NEAT net to play Pick the Lock")
-    parser.add_argument("--generations", type=int, default=100)
+    parser.add_argument("--generations", type=int, default=1000)
     parser.add_argument("--runs", type=int, default=EVAL_RUNS,
                         help="simulations per genome evaluation (5-10)")
     parser.add_argument("--workers", type=int,
