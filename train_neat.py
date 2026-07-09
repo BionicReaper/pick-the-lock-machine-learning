@@ -48,7 +48,7 @@ import neat
 
 from pickthelock.config import DEFAULT_STAGE, DEFAULT_TUNING
 from pickthelock.controller import ScheduledClickController
-from pickthelock.observations import build_inputs, decode_outputs
+from pickthelock.schemas import SCHEMAS, get_schema, apply_config_io
 from pickthelock.sim import LockpickingSim, EV_BAR_SPAWNED, EV_TARGET_REACHED
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -65,17 +65,18 @@ MAX_EPISODE_SECONDS = 600.0  # default --max_episode_seconds (timer bonuses exte
 
 def run_episode(net, seed: int, inaccuracy: float = 0.0,
                 reaction_time_ms: float = 0.0, reaction_time_std: float = 0.05,
-                max_episode_seconds: float = MAX_EPISODE_SECONDS) -> int:
+                max_episode_seconds: float = MAX_EPISODE_SECONDS,
+                schema: int = 0) -> int:
     sim = LockpickingSim(DEFAULT_STAGE, DEFAULT_TUNING, seed=seed)
-    ctrl = ScheduledClickController(sim)
+    # aim inaccuracy is applied by the controller (schedule), same as play mode;
+    # reaction delay is handled by this loop below, not the controller
+    ctrl = ScheduledClickController(sim, inaccuracy=inaccuracy)
+    sch = get_schema(schema)
     gauss = random.gauss
 
     def prompt():
-        dist, boost_frac, do_click = decode_outputs(net.activate(build_inputs(sim)), sim)
-        if inaccuracy > 0.0:
-            # human aim error: the faster the pick moves, the sloppier the aim
-            dist += sim.current_speed * inaccuracy * gauss(0.0, 1.0)
-        ctrl.schedule(dist, boost_frac, do_click)
+        outputs = sch.activate(net, sim)
+        sch.interpret(outputs, ctrl)
 
     prompt()
     tick_rate = DEFAULT_TUNING.tick_rate
@@ -129,10 +130,11 @@ def run_episode(net, seed: int, inaccuracy: float = 0.0,
 
 def eval_genome(genome, config, seeds, inaccuracy: float = 0.0,
                 reaction_time_ms: float = 0.0, reaction_time_std: float = 0.05,
-                max_episode_seconds: float = MAX_EPISODE_SECONDS) -> float:
+                max_episode_seconds: float = MAX_EPISODE_SECONDS,
+                schema: int = 0) -> float:
     net = neat.nn.FeedForwardNetwork.create(genome, config)
     scores = [run_episode(net, s, inaccuracy, reaction_time_ms, reaction_time_std,
-                          max_episode_seconds)
+                          max_episode_seconds, schema)
               for s in seeds]
     return (W_AVG * (sum(scores) / len(scores))
             + W_WORST * min(scores)
@@ -141,9 +143,9 @@ def eval_genome(genome, config, seeds, inaccuracy: float = 0.0,
 
 # top-level so Windows 'spawn' processes can pickle it
 def _eval_task(args):
-    genome_id, genome, config, seeds, inaccuracy, reaction_ms, reaction_std, max_ep_s = args
+    genome_id, genome, config, seeds, inaccuracy, reaction_ms, reaction_std, max_ep_s, schema = args
     return genome_id, eval_genome(genome, config, seeds, inaccuracy, reaction_ms,
-                                  reaction_std, max_ep_s)
+                                  reaction_std, max_ep_s, schema)
 
 
 def _atomic_pickle(path: str, obj) -> None:
@@ -161,7 +163,8 @@ class Trainer:
     def __init__(self, config, workers: int, runs: int, seed_base: int,
                  inaccuracy: float = 0.0, reaction_time_ms: float = 0.0,
                  reaction_time_std: float = 0.05,
-                 max_episode_seconds: float = MAX_EPISODE_SECONDS):
+                 max_episode_seconds: float = MAX_EPISODE_SECONDS,
+                 schema: int = 0):
         self.config = config
         self.workers = workers
         self.runs = runs
@@ -170,6 +173,7 @@ class Trainer:
         self.reaction_time_ms = reaction_time_ms
         self.reaction_time_std = reaction_time_std
         self.max_episode_seconds = max_episode_seconds
+        self.schema = schema
         self.generation = 0
         self.best_fitness = float("-inf")
         self.history: list[tuple[int, float, float]] = []
@@ -181,7 +185,8 @@ class Trainer:
         # same seeds for every genome within a generation, new set each gen
         seeds = [self.seed_base + self.generation * 7919 + i for i in range(self.runs)]
         tasks = [(gid, g, config, seeds, self.inaccuracy, self.reaction_time_ms,
-                  self.reaction_time_std, self.max_episode_seconds) for gid, g in genomes]
+                  self.reaction_time_std, self.max_episode_seconds, self.schema)
+                 for gid, g in genomes]
         if self.pool is not None:
             results = dict(self.pool.map(_eval_task, tasks))
         else:
@@ -240,10 +245,16 @@ def main():
                         help="hard cap on episode length in sim seconds (timer bonuses can "
                              "extend games this far; long-surviving genomes cost "
                              "proportionally more to evaluate)")
+    parser.add_argument("--schema", type=int, default=0,
+                        help="input/output schema id (see pickthelock.schemas); "
+                             "must match the schema a resumed/played genome trained on")
     parser.add_argument("--resume", default=None, help="path to a neat-checkpoint-N file")
     parser.add_argument("--smoke", action="store_true",
                         help="tiny run (pop 16, 2 gens, 3 sims, 1 worker) to verify the pipeline")
     args = parser.parse_args()
+    if args.schema not in SCHEMAS:
+        valid = ", ".join(str(k) for k in sorted(SCHEMAS))
+        parser.error(f"--schema {args.schema} unknown; valid schemas: {valid}")
     if not 0.0 <= args.inaccuracy <= 1.0:
         parser.error("--inaccuracy must be between 0 and 1")
     if args.reaction_time_ms < 0.0:
@@ -257,6 +268,7 @@ def main():
 
     config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
                          neat.DefaultSpeciesSet, neat.DefaultStagnation, CONFIG_PATH)
+    apply_config_io(config, get_schema(args.schema))  # I/O sizes for this schema
     if args.smoke:
         args.generations, args.runs, args.workers, args.pop = 2, 3, 1, 16
     if args.pop:
@@ -279,7 +291,7 @@ def main():
     trainer = Trainer(config, args.workers, args.runs, args.seed_base,
                       args.inaccuracy, args.reaction_time_ms,
                       args.reaction_time_standard_deviation,
-                      args.max_episode_seconds)
+                      args.max_episode_seconds, args.schema)
     if args.resume:
         # keep the per-generation seed rotation moving forward after a resume
         trainer.generation = pop.generation

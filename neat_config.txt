@@ -54,7 +54,10 @@ initial_connection      = partial_direct 0.5
 node_add_prob           = 0.3
 node_delete_prob        = 0.05
 
-# network parameters (must match pickthelock.observations)
+# network parameters. num_inputs/num_outputs below are the schema-0 defaults;
+# for --schema N they are overridden at load time by pickthelock.schemas
+# (apply_config_io) from that schema's registry entry, so all other rules here
+# stay shared across schemas. Keep these two in sync with schema 0.
 num_hidden              = 0
 num_inputs              = 32
 num_outputs             = 3

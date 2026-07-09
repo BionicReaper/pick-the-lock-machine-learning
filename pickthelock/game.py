@@ -23,7 +23,7 @@ import pygame
 from .assets import Assets, ROOT
 from .config import DEFAULT_STAGE, DEFAULT_TUNING
 from .controller import ScheduledClickController
-from .observations import build_inputs, decode_outputs
+from .schemas import SCHEMAS, get_schema, apply_config_io
 from .sim import (LockpickingSim, EV_BAR_SPAWNED, EV_PICKED, EV_MISSED,
                   EV_TIMER_BONUS, EV_GAME_OVER, EV_TARGET_REACHED)
 
@@ -82,7 +82,7 @@ class GameApp:
     def __init__(self, ai_genome_path: str | None = None, seed: int | None = None,
                  muted: bool = False, scale: float | None = None,
                  inaccuracy: float = 0.0, reaction_time_ms: float = 0.0,
-                 reaction_time_std: float = 0.05):
+                 reaction_time_std: float = 0.05, schema: int = 0):
         pygame.init()
         try:
             pygame.mixer.init()
@@ -103,6 +103,7 @@ class GameApp:
         self.inaccuracy = inaccuracy
         self.reaction_time_ms = reaction_time_ms
         self.reaction_time_std = reaction_time_std
+        self.schema = schema
         self.state = MENU
         self.debug = False
         self.wall_time = 0.0
@@ -171,6 +172,7 @@ class GameApp:
         cfg_path = os.path.join(ROOT, "neat_config.txt")
         neat_cfg = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
                                neat.DefaultSpeciesSet, neat.DefaultStagnation, cfg_path)
+        apply_config_io(neat_cfg, get_schema(self.schema))  # match the genome's I/O sizes
         with open(genome_path, "rb") as fh:
             genome = pickle.load(fh)
         return neat.nn.FeedForwardNetwork.create(genome, neat_cfg)
@@ -222,13 +224,12 @@ class GameApp:
     # AI
 
     def _ai_prompt(self):
-        inputs = build_inputs(self.sim)
-        out = self.net.activate(inputs)
-        dist, boost_frac, do_click = decode_outputs(out, self.sim)
-        # a new decision always replaces the pending schedule
-        self.ctrl.cancel()
-        self.ctrl.schedule(dist, boost_frac, do_click)
-        self.ai_outputs = (dist, boost_frac, do_click)
+        # standardized two-step prompt: activate the net on the schema's inputs,
+        # then interpret the outputs onto the controller (a new decision replaces
+        # the pending schedule). ai_outputs holds the decoded action for display.
+        sch = get_schema(self.schema)
+        outputs = sch.activate(self.net, self.sim)
+        self.ai_outputs = sch.interpret(outputs, self.ctrl)
 
     # ------------------------------------------------------------------ #
     # per-tick logic
@@ -651,7 +652,13 @@ def main(argv=None):
     parser.add_argument("--reaction_time_standard_deviation", type=float, default=0.05,
                         help="relative gaussian jitter of the reaction delay "
                              "(>= 0, typically 0-0.2)")
+    parser.add_argument("--schema", type=int, default=0,
+                        help="input/output schema id (see pickthelock.schemas); "
+                             "must match the schema the genome was trained on")
     args = parser.parse_args(argv)
+    if args.schema not in SCHEMAS:
+        valid = ", ".join(str(k) for k in sorted(SCHEMAS))
+        parser.error(f"--schema {args.schema} unknown; valid schemas: {valid}")
     if not 0.0 <= args.inaccuracy <= 1.0:
         parser.error("--inaccuracy must be between 0 and 1")
     if args.reaction_time_ms < 0.0:
@@ -660,7 +667,8 @@ def main(argv=None):
         parser.error("--reaction_time_standard_deviation must be non-negative")
     GameApp(ai_genome_path=args.ai, seed=args.seed, muted=args.mute, scale=args.scale,
             inaccuracy=args.inaccuracy, reaction_time_ms=args.reaction_time_ms,
-            reaction_time_std=args.reaction_time_standard_deviation).run()
+            reaction_time_std=args.reaction_time_standard_deviation,
+            schema=args.schema).run()
 
 
 if __name__ == "__main__":
