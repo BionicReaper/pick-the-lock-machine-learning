@@ -89,13 +89,13 @@ class _Sampler:
 
 # per-bar getters: factories closing over the 0-based slot index
 
-def _bar_forward_distance_percentage(idx: int) -> Callable[[_Sampler], float]:
+def _bar_forward_distance_normalized_360(idx: int) -> Callable[[_Sampler], float]:
     def get(s: _Sampler) -> float:
         return s.bars[idx][1] / 360.0 if idx < len(s.bars) else 1.0
     return get
 
 
-def _bar_reverse_distance_percentage(idx: int) -> Callable[[_Sampler], float]:
+def _bar_reverse_distance_normalized_360(idx: int) -> Callable[[_Sampler], float]:
     def get(s: _Sampler) -> float:
         return (360.0 - s.bars[idx][1]) / 360.0 if idx < len(s.bars) else 1.0
     return get
@@ -107,9 +107,14 @@ def _bar_is_blue_boolean(idx: int) -> Callable[[_Sampler], float]:
     return get
 
 
-def _bar_width_percentage(idx: int) -> Callable[[_Sampler], float]:
+def _bar_width_normalized_max_width(idx: int) -> Callable[[_Sampler], float]:
     def get(s: _Sampler) -> float:
         return s.bars[idx][2].width / s.sim.initial_bar_width if idx < len(s.bars) else 0.0
+    return get
+
+def _bar_width_normalized_360(idx: int) -> Callable[[_Sampler], float]:
+    def get(s: _Sampler) -> float:
+        return s.bars[idx][2].width / 360.0 if idx < len(s.bars) else 0.0
     return get
 
 
@@ -120,11 +125,11 @@ def _pick_in_hit_zone_boolean(s: _Sampler) -> float:
     return 1.0 if hittable is not None and hittable.perceived else 0.0
 
 
-def _time_remaining_percentage(s: _Sampler) -> float:
+def _time_remaining_normalized_time_limit(s: _Sampler) -> float:
     return s.sim.time_remaining / s.sim.stage.time_limit
 
 
-def _boost_multiplier_percentage(s: _Sampler) -> float:
+def _boost_multiplier_normalized_max_multiplier(s: _Sampler) -> float:
     return (s.sim.boost_mult - 1.0) / max(1e-6, s.sim.stage.max_speed_multiplier - 1.0)
 
 
@@ -136,16 +141,29 @@ def _pick_disabled_boolean(s: _Sampler) -> float:
     return 1.0 if s.sim.pick_disabled else 0.0
 
 
-def _spawn_interval_ratio(s: _Sampler) -> float:
+def _spawn_interval_normalized_base_unlock_appear_rate(s: _Sampler) -> float:
     return s.sim.spawn_interval / s.sim.stage.base_unlock_appear_rate
+
+
+def _spawn_interval_normalized_time_limit(s: _Sampler) -> float:
+    return s.sim.spawn_interval / s.sim.stage.time_limit
 
 
 def _blue_chance_percentage(s: _Sampler) -> float:
     return s.sim.blue_chance / 100.0
 
 
-def _current_speed_percentage(s: _Sampler) -> float:
+def _current_speed_normalized_max_speed(s: _Sampler) -> float:
     return s.sim.current_speed / max(1e-6, s.sim.max_speed)
+
+
+def _current_speed_normalized_360(s: _Sampler) -> float:
+    return s.sim.current_speed / 360.0
+
+
+def _time_to_next_spawn_normalized_time_limit(s: _Sampler) -> float:
+    """Fraction of the spawn interval until the next bar appears."""
+    return s.sim.spawn_timer / s.sim.stage.time_limit
 
 
 # --------------------------------------------------------------------------- #
@@ -154,18 +172,20 @@ def _current_speed_percentage(s: _Sampler) -> float:
 FEATURE_MAP: dict[str, Callable[[_Sampler], float]] = {}
 for _slot in range(N_TRACKED_BARS):
     _n = _slot + 1  # keys are 1-indexed: slot 1 is the nearest bar
-    FEATURE_MAP[f"bar_forward_distance_percentage_{_n}"] = _bar_forward_distance_percentage(_slot)
-    FEATURE_MAP[f"bar_reverse_distance_percentage_{_n}"] = _bar_reverse_distance_percentage(_slot)
+    FEATURE_MAP[f"bar_forward_distance_normalized_360_{_n}"] = _bar_forward_distance_normalized_360(_slot)
+    FEATURE_MAP[f"bar_reverse_distance_normalized_360_{_n}"] = _bar_reverse_distance_normalized_360(_slot)
     FEATURE_MAP[f"bar_is_blue_boolean_{_n}"] = _bar_is_blue_boolean(_slot)
-    FEATURE_MAP[f"bar_width_percentage_{_n}"] = _bar_width_percentage(_slot)
+    FEATURE_MAP[f"bar_width_normalized_max_width_{_n}"] = _bar_width_normalized_max_width(_slot)
+    FEATURE_MAP[f"bar_width_normalized_360_{_n}"] = _bar_width_normalized_360(_slot)
 FEATURE_MAP["pick_in_hit_zone_boolean"] = _pick_in_hit_zone_boolean
-FEATURE_MAP["time_remaining_percentage"] = _time_remaining_percentage
-FEATURE_MAP["boost_multiplier_percentage"] = _boost_multiplier_percentage
+FEATURE_MAP["time_remaining_normalized_time_limit"] = _time_remaining_normalized_time_limit
+FEATURE_MAP["boost_multiplier_normalized_max_multiplier"] = _boost_multiplier_normalized_max_multiplier
 FEATURE_MAP["penalty_factor_ratio"] = _penalty_factor_ratio
 FEATURE_MAP["pick_disabled_boolean"] = _pick_disabled_boolean
-FEATURE_MAP["spawn_interval_ratio"] = _spawn_interval_ratio
+FEATURE_MAP["spawn_interval_normalized_base_unlock_appear_rate"] = _spawn_interval_normalized_base_unlock_appear_rate
 FEATURE_MAP["blue_chance_percentage"] = _blue_chance_percentage
-FEATURE_MAP["current_speed_percentage"] = _current_speed_percentage
+FEATURE_MAP["current_speed_normalized_max_speed"] = _current_speed_normalized_max_speed
+FEATURE_MAP["time_to_next_spawn_normalized_time_limit"] = _time_to_next_spawn_normalized_time_limit
 
 
 # The default schema's ordered inputs: every per-bar feature interleaved per
@@ -173,19 +193,19 @@ FEATURE_MAP["current_speed_percentage"] = _current_speed_percentage
 DEFAULT_INPUT_KEYS: tuple[str, ...] = tuple(
     key
     for n in range(1, N_TRACKED_BARS + 1)
-    for key in (f"bar_forward_distance_percentage_{n}",
-                f"bar_reverse_distance_percentage_{n}",
+    for key in (f"bar_forward_distance_normalized_360_{n}",
+                f"bar_reverse_distance_normalized_360_{n}",
                 f"bar_is_blue_boolean_{n}",
-                f"bar_width_percentage_{n}")
+                f"bar_width_normalized_max_width_{n}")
 ) + (
     "pick_in_hit_zone_boolean",
-    "time_remaining_percentage",
-    "boost_multiplier_percentage",
+    "time_remaining_normalized_time_limit",
+    "boost_multiplier_normalized_max_multiplier",
     "penalty_factor_ratio",
     "pick_disabled_boolean",
-    "spawn_interval_ratio",
+    "spawn_interval_normalized_base_unlock_appear_rate",
     "blue_chance_percentage",
-    "current_speed_percentage",
+    "current_speed_normalized_max_speed",
 )
 
 NUM_INPUTS = len(DEFAULT_INPUT_KEYS)
