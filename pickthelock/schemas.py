@@ -50,14 +50,19 @@ class Schema:
     input_dictionary: Sequence[str]      # ordered feature keys into FEATURE_MAP
     interpret: Callable[..., tuple]       # (outputs, ctrl) -> decoded action
     num_outputs: int
+    use_input_displacement: bool  # degrees, travel-direction perturbation for observations.build_inputs
 
     @property
     def num_inputs(self) -> int:
         return len(self.input_dictionary)
 
-    def activate(self, net, sim):
-        """Encode the sim state with this schema and run it through the net."""
-        return net.activate(build_inputs(sim, self.input_dictionary))
+    def activate(self, net, sim, displacement: float = 0.0):
+        """Encode the sim state with this schema and run it through the net.
+
+        `displacement` (degrees, travel-direction) positionally perturbs the
+        pick for the encoded observation — see observations.build_inputs and
+        LockpickingSim.perturbed_angle. Defaults to 0.0 (the live pick)."""
+        return net.activate(build_inputs(sim, self.input_dictionary, displacement))
 
 
 # --------------------------------------------------------------------------- #
@@ -76,12 +81,37 @@ def interpret_scheduled(outputs, ctrl) -> tuple:
     return dist, boost_frac, do_click
 
 
+
+# --------------------------------------------------------------------------- #
+# Schema 1: improving normalization of the inputs and adding missing time
+# to next spawn
+
+SCHEMA_1_INPUT_KEYS: tuple[str, ...] = tuple(
+    key
+    for n in range(1, 6 + 1)
+    for key in (f"bar_forward_distance_normalized_360_{n}",
+                f"bar_reverse_distance_normalized_360_{n}",
+                f"bar_is_blue_boolean_{n}",
+                f"bar_width_normalized_360_{n}")
+) + (
+    "pick_in_hit_zone_boolean",
+    "time_remaining_normalized_time_limit",
+    "penalty_factor_ratio",
+    "pick_disabled_boolean",
+    "spawn_interval_normalized_time_limit",
+    "blue_chance_percentage",
+    "current_speed_normalized_360",
+    "time_to_next_spawn_normalized_time_limit"
+)
+
 # --------------------------------------------------------------------------- #
 # registry
 
 SCHEMAS: dict[int, Schema] = {
     0: Schema(input_dictionary=DEFAULT_INPUT_KEYS, interpret=interpret_scheduled,
-              num_outputs=NUM_OUTPUTS),
+              num_outputs=NUM_OUTPUTS, use_input_displacement=False),
+    1: Schema(input_dictionary=SCHEMA_1_INPUT_KEYS, interpret=interpret_scheduled,
+              num_outputs=NUM_OUTPUTS, use_input_displacement=True),
 }
 
 # fail fast on a typo'd or unregistered key in any schema's input_dictionary

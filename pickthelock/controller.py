@@ -50,6 +50,12 @@ class ScheduledClickController:
 
     # ------------------------------------------------------------------ #
 
+    def calculate_displacement(self) -> float:
+        """Return the distance_deg after applying the inaccuracy knob."""
+        if self.inaccuracy <= 0.0:
+            return 0.0
+        return self.sim.current_speed * self.inaccuracy * random.gauss(0.0, 1.0)
+
     def schedule(self, distance_deg: float, boost_hold_frac: float, do_click: bool) -> None:
         """Arm a click `distance_deg` of travel from the current position.
 
@@ -58,7 +64,7 @@ class ScheduledClickController:
         first half of the way).
         """
         if self.inaccuracy > 0.0:
-            distance_deg += self.sim.current_speed * self.inaccuracy * random.gauss(0.0, 1.0)
+            distance_deg += self.calculate_displacement()
         distance_deg = max(self.sim.tuning.min_target_distance_deg, float(distance_deg))
         boost_hold_frac = min(1.0, max(0.0, float(boost_hold_frac)))
         self.target_dist = distance_deg

@@ -83,7 +83,13 @@ def run_episode(net, seed: int, inaccuracy: float = 0.0,
     gauss = random.gauss
 
     def prompt():
-        outputs = sch.activate(net, sim)
+        if sch.use_input_displacement:
+            # perturb the pick's position for the encoded observation, then
+            # let the controller apply inaccuracy to the decoded target.
+            displacement = ctrl.calculate_displacement()
+        else:
+            displacement = 0.0
+        outputs = sch.activate(net, sim, displacement)
         sch.interpret(outputs, ctrl)
 
     prompt()

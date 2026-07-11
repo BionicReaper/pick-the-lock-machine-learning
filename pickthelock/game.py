@@ -229,7 +229,13 @@ class GameApp:
         # then interpret the outputs onto the controller (a new decision replaces
         # the pending schedule). ai_outputs holds the decoded action for display.
         sch = get_schema(self.schema)
-        outputs = sch.activate(self.net, self.sim)
+        if sch.use_input_displacement:
+            # perturb the pick's position for the encoded observation, then
+            # let the controller apply inaccuracy to the decoded target.
+            displacement = self.ctrl.calculate_displacement()
+        else:
+            displacement = 0.0
+        outputs = sch.activate(self.net, self.sim, displacement)
         self.ai_outputs = sch.interpret(outputs, self.ctrl)
 
     # ------------------------------------------------------------------ #
