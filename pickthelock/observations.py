@@ -54,13 +54,16 @@ N_TRACKED_BARS = 6
 NUM_OUTPUTS = 3
 
 
-def travel_to_hit(sim: LockpickingSim, bar: Bar) -> float:
+def travel_to_hit(sim: LockpickingSim, bar: Bar, displacement: float = 0.0) -> float:
     """Degrees of travel until a click would land on `bar`.
 
     0 while the pick is anywhere inside the hit zone (center ahead OR just
     behind). Once the pick exits past the far edge, hitting the bar again
-    genuinely requires almost a full lap, and the value reflects that."""
-    raw = sim.ang_fwd(bar.center)
+    genuinely requires almost a full lap, and the value reflects that.
+
+    `displacement` (degrees, travel-direction) perturbs the pick position the
+    measurement is taken from — see LockpickingSim.perturbed_angle."""
+    raw = sim.ang_fwd(bar.center, displacement)
     half = bar.width / 2.0 + sim.tuning.hit_buffer_deg
     if raw <= half or raw >= 360.0 - half:
         return 0.0
@@ -76,13 +79,16 @@ class _Sampler:
     Sorts the perceived bars once (nearest-first by travel-to-hit) so every
     per-bar getter is a cheap index instead of re-sorting.
     """
-    __slots__ = ("sim", "bars")
+    __slots__ = ("sim", "bars", "displacement")
 
-    def __init__(self, sim: LockpickingSim):
+    def __init__(self, sim: LockpickingSim, displacement: float = 0.0):
         self.sim = sim
-        # (travel_to_hit, forward_distance, bar), nearest-first
+        self.displacement = displacement
+        # (travel_to_hit, forward_distance, bar), nearest-first, measured from
+        # the (optionally perturbed) pick position
         self.bars = sorted(
-            ((travel_to_hit(sim, b), sim.ang_fwd(b.center), b)
+            ((travel_to_hit(sim, b, displacement),
+              sim.ang_fwd(b.center, displacement), b)
              for b in sim.bars if b.perceived),
             key=lambda p: p[0])
 
@@ -121,7 +127,7 @@ def _bar_width_normalized_360(idx: int) -> Callable[[_Sampler], float]:
 # global getters
 
 def _pick_in_hit_zone_boolean(s: _Sampler) -> float:
-    hittable = s.sim.hittable_bar()
+    hittable = s.sim.hittable_bar(s.displacement)
     return 1.0 if hittable is not None and hittable.perceived else 0.0
 
 
@@ -213,15 +219,23 @@ DEFAULT_INPUT_KEYS: tuple[str, ...] = tuple(
 NUM_INPUTS = len(DEFAULT_INPUT_KEYS)
 
 
-def sample_state(sim: LockpickingSim) -> dict[str, float]:
-    """Retrieve every available feature for the current sim state."""
-    s = _Sampler(sim)
+def sample_state(sim: LockpickingSim, displacement: float = 0.0) -> dict[str, float]:
+    """Retrieve every available feature for the current sim state.
+
+    `displacement` (degrees, travel-direction) positionally perturbs the pick
+    for every position-dependent feature — see LockpickingSim.perturbed_angle.
+    Position-independent features (speed, timer, penalty, spawn, ...) are
+    unaffected."""
+    s = _Sampler(sim, displacement)
     return {key: get(s) for key, get in FEATURE_MAP.items()}
 
 
-def build_inputs(sim: LockpickingSim, input_dictionary: Sequence[str]) -> list[float]:
-    """Activation inputs for one schema: the selected feature keys, in order."""
-    state = sample_state(sim)
+def build_inputs(sim: LockpickingSim, input_dictionary: Sequence[str],
+                 displacement: float = 0.0) -> list[float]:
+    """Activation inputs for one schema: the selected feature keys, in order.
+
+    `displacement` positionally perturbs the observation (see sample_state)."""
+    state = sample_state(sim, displacement)
     try:
         return [state[key] for key in input_dictionary]
     except KeyError as e:
