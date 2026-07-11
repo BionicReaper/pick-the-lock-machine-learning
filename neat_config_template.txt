@@ -19,7 +19,7 @@ activation_options      = sigmoid tanh relu
 # condition holds"). kept rare so they stay optional refinements of sum.
 aggregation_default     = sum
 aggregation_mutate_rate = 0.05
-aggregation_options     = sum max min
+aggregation_options     = sum max min product
 
 # node bias options
 bias_init_mean          = 0.0
