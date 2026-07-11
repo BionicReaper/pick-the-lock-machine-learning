@@ -36,12 +36,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Sequence
 
+from pickthelock.sim import LockpickingSim
+
 from .observations import (
     build_inputs,
-    decode_outputs,
     FEATURE_MAP,
     DEFAULT_INPUT_KEYS,
-    NUM_OUTPUTS,
 )
 
 
@@ -64,21 +64,53 @@ class Schema:
         LockpickingSim.perturbed_angle. Defaults to 0.0 (the live pick)."""
         return net.activate(build_inputs(sim, self.input_dictionary, displacement))
 
+# --------------------------------------------------------------------------- #
+# output_decoders: interpret the raw net outputs into calls on the controller interface
+
+def decode_outputs_default(outputs, sim: LockpickingSim) -> tuple[float, float, bool]:
+    """Map raw net outputs to (distance_deg, boost_hold_frac, do_click)."""
+    dist01 = min(1.0, max(0.0, float(outputs[0])))
+    speed01 = min(1.0, max(0.0, float(outputs[1])))
+    click = float(outputs[2]) > 0.5
+    distance = max(sim.tuning.min_target_distance_deg, dist01 * 360.0)
+    return distance, speed01, click
+
+def decode_outputs_schema_1(outputs) -> tuple[bool, bool]:
+    """Map raw net outputs to (distance_deg, boost_hold_frac, do_click).
+
+    Schema 1 has no click output; the controller always clicks at the end of
+    the boost hold. The third return value is always False."""
+    click = outputs[0] > 0.5
+    boost = outputs[1] > 0.5
+    return click, boost
+
 
 # --------------------------------------------------------------------------- #
 # interpreters: raw net outputs -> calls on the controller interface
 
-def interpret_scheduled(outputs, ctrl) -> tuple:
+def interpret_scheduled_default(outputs, ctrl) -> tuple:
     """Original regime: decode a (distance, boost, click) target and schedule it.
 
     Aim inaccuracy is applied by the controller (ctrl.schedule), never here, so
     training and play agree — see the controller's `inaccuracy` knob. Returns
     the decoded action for display/telemetry; the effect is on ctrl.
     """
-    dist, boost_frac, do_click = decode_outputs(outputs, ctrl.sim)
+    dist, boost_frac, do_click = decode_outputs_default(outputs, ctrl.sim)
     ctrl.cancel()                              # a new decision replaces the pending schedule
     ctrl.schedule(dist, boost_frac, do_click)  # controller applies inaccuracy
     return dist, boost_frac, do_click
+
+def interpret_instant(outputs, ctrl) -> tuple:
+    """Instant regime: decode a (distance, boost) target and apply it immediately.
+
+    Aim inaccuracy is applied by the controller (ctrl.schedule), never here, so
+    training and play agree — see the controller's `inaccuracy` knob. Returns
+    the decoded action for display/telemetry; the effect is on ctrl.
+    """
+    click, boost = decode_outputs_schema_1(outputs)
+    ctrl.cancel()                              # a new decision replaces the pending schedule
+    ctrl.schedule(0, boost, do_click=False)  # controller applies inaccuracy
+    return click, boost
 
 
 
@@ -108,10 +140,10 @@ SCHEMA_1_INPUT_KEYS: tuple[str, ...] = tuple(
 # registry
 
 SCHEMAS: dict[int, Schema] = {
-    0: Schema(input_dictionary=DEFAULT_INPUT_KEYS, interpret=interpret_scheduled,
-              num_outputs=NUM_OUTPUTS, use_input_displacement=False),
-    1: Schema(input_dictionary=SCHEMA_1_INPUT_KEYS, interpret=interpret_scheduled,
-              num_outputs=NUM_OUTPUTS, use_input_displacement=True),
+    0: Schema(input_dictionary=DEFAULT_INPUT_KEYS, interpret=interpret_scheduled_default,
+              num_outputs=3, use_input_displacement=False),
+    1: Schema(input_dictionary=SCHEMA_1_INPUT_KEYS, interpret=interpret_instant,
+              num_outputs=2, use_input_displacement=True),
 }
 
 # fail fast on a typo'd or unregistered key in any schema's input_dictionary
