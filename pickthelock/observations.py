@@ -183,8 +183,10 @@ FEATURE_MAP["boost_multiplier_normalized_max_multiplier"] = _boost_multiplier_no
 FEATURE_MAP["penalty_factor_ratio"] = _penalty_factor_ratio
 FEATURE_MAP["pick_disabled_boolean"] = _pick_disabled_boolean
 FEATURE_MAP["spawn_interval_normalized_base_unlock_appear_rate"] = _spawn_interval_normalized_base_unlock_appear_rate
+FEATURE_MAP["spawn_interval_normalized_time_limit"] = _spawn_interval_normalized_time_limit
 FEATURE_MAP["blue_chance_percentage"] = _blue_chance_percentage
 FEATURE_MAP["current_speed_normalized_max_speed"] = _current_speed_normalized_max_speed
+FEATURE_MAP["current_speed_normalized_360"] = _current_speed_normalized_360
 FEATURE_MAP["time_to_next_spawn_normalized_time_limit"] = _time_to_next_spawn_normalized_time_limit
 
 
