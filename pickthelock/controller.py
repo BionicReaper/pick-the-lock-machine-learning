@@ -63,8 +63,6 @@ class ScheduledClickController:
         is held (held first, then released — per spec 0.5 = boost for the
         first half of the way).
         """
-        if self.inaccuracy > 0.0:
-            distance_deg += self.calculate_displacement()
         distance_deg = max(self.sim.tuning.min_target_distance_deg, float(distance_deg))
         boost_hold_frac = min(1.0, max(0.0, float(boost_hold_frac)))
         self.target_dist = distance_deg
@@ -156,7 +154,9 @@ class ScheduledClickController:
 
         speed = sim.current_speed
         est_step = speed * sim.dt
-        rem = self.remaining
+        displacement = self.calculate_displacement()
+
+        rem = self.remaining + displacement
 
         if speed > 0.0 and 0.0 < rem <= est_step:
             # split the tick: land exactly on the target distance
