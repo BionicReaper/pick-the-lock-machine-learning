@@ -211,10 +211,29 @@ class LockpickingSim:
 
         return events
 
-    def hittable_bar(self) -> Bar | None:
-        """The bar a click right now would hit, or None."""
+    def perturbed_angle(self, displacement: float = 0.0) -> float:
+        """Pick angle after advancing `displacement` degrees in the current
+        travel direction (same unit as current_speed).
+
+        `displacement=0.0` returns the live pick angle. Positive values look
+        *forward* along the direction of motion (reducing the forward distance
+        to bars by exactly `displacement`); negative values look behind. Used to
+        positionally perturb the observations fed to a model without moving the
+        real pick.
+        """
+        if displacement == 0.0:
+            return self.pick_angle
+        return ang_norm(self.pick_angle + self.direction * displacement)
+
+    def hittable_bar(self, displacement: float = 0.0) -> Bar | None:
+        """The bar a click right now would hit, or None.
+
+        With a non-zero `displacement` (degrees, travel-direction), answers as
+        if the pick were at that offset from its current position.
+        """
+        angle = self.perturbed_angle(displacement)
         for bar in self.bars:
-            if ang_diff(self.pick_angle, bar.center) <= bar.width / 2.0 + self.tuning.hit_buffer_deg:
+            if ang_diff(angle, bar.center) <= bar.width / 2.0 + self.tuning.hit_buffer_deg:
                 return bar
         return None
 
@@ -323,12 +342,17 @@ class LockpickingSim:
     # ------------------------------------------------------------------ #
     # helpers for observers / renderers
 
-    def ang_fwd(self, to: float) -> float:
-        """Degrees of travel (in the current direction) to reach angle `to`."""
-        return ((to - self.pick_angle) * self.direction) % 360.0
+    def ang_fwd(self, to: float, displacement: float = 0.0) -> float:
+        """Degrees of travel (in the current direction) to reach angle `to`.
 
-    def bars_by_forward_distance(self) -> list[tuple[float, Bar]]:
+        With a non-zero `displacement` (degrees, travel-direction), measures
+        from the perturbed pick position instead of the live one.
+        """
+        angle = self.perturbed_angle(displacement)
+        return ((to - angle) * self.direction) % 360.0
+
+    def bars_by_forward_distance(self, displacement: float = 0.0) -> list[tuple[float, Bar]]:
         """Bars sorted by travel distance from the pick, in travel direction."""
-        out = [(self.ang_fwd(b.center), b) for b in self.bars]
+        out = [(self.ang_fwd(b.center, displacement), b) for b in self.bars]
         out.sort(key=lambda p: p[0])
         return out
