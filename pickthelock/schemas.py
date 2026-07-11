@@ -108,8 +108,9 @@ def interpret_instant(outputs, ctrl) -> tuple:
     the decoded action for display/telemetry; the effect is on ctrl.
     """
     click, boost = decode_outputs_schema_1(outputs)
+    boost_frac = 1.0 if boost else 0.0
     ctrl.cancel()                              # a new decision replaces the pending schedule
-    ctrl.schedule(0, boost, do_click=False)  # controller applies inaccuracy
+    ctrl.schedule(ctrl.sim.tuning.min_target_distance_deg, boost_frac, do_click=click)  # controller applies inaccuracy
     return click, boost
 
 
