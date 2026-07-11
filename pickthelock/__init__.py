@@ -8,5 +8,5 @@ from .config import StageConfig, SimTuning, DEFAULT_STAGE, DEFAULT_TUNING
 from .sim import LockpickingSim, EV_BAR_SPAWNED, EV_BAR_EXPIRED, EV_PICKED, EV_MISSED, EV_GAME_OVER, EV_TARGET_REACHED, EV_TIMER_BONUS
 from .controller import ScheduledClickController
 from .observations import (build_inputs, sample_state, FEATURE_MAP, DEFAULT_INPUT_KEYS,
-                           NUM_INPUTS, NUM_OUTPUTS, decode_outputs)
+                           NUM_INPUTS)
 from .schemas import Schema, SCHEMAS, get_schema, apply_config_io

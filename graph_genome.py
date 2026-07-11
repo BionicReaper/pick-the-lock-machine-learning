@@ -27,7 +27,6 @@ from collections import deque
 # hardcode the input vector (which changes as schemas are added).
 from pickthelock import paths
 from pickthelock.schemas import get_schema, SCHEMAS
-from pickthelock.observations import NUM_OUTPUTS
 
 ROOT = paths.ROOT
 

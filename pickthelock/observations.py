@@ -1,4 +1,4 @@
-"""NEAT input/output encoding.
+"""NEAT input/output encoding. POSSIBLY OUTDATED - FIX ON NEXT CHANCE
 
 Inputs are described as *feature keys* rather than a fixed vector. FEATURE_MAP
 maps every available key to the function that retrieves it, and sample_state()
@@ -51,7 +51,6 @@ from typing import Callable, Sequence
 from .sim import LockpickingSim, Bar
 
 N_TRACKED_BARS = 6
-NUM_OUTPUTS = 3
 
 
 def travel_to_hit(sim: LockpickingSim, bar: Bar, displacement: float = 0.0) -> float:
@@ -241,12 +240,3 @@ def build_inputs(sim: LockpickingSim, input_dictionary: Sequence[str],
     except KeyError as e:
         raise KeyError(f"input key {e.args[0]!r} is not in FEATURE_MAP; "
                        f"available keys: {sorted(FEATURE_MAP)}") from None
-
-
-def decode_outputs(outputs, sim: LockpickingSim) -> tuple[float, float, bool]:
-    """Map raw net outputs to (distance_deg, boost_hold_frac, do_click)."""
-    dist01 = min(1.0, max(0.0, float(outputs[0])))
-    speed01 = min(1.0, max(0.0, float(outputs[1])))
-    click = float(outputs[2]) > 0.5
-    distance = max(sim.tuning.min_target_distance_deg, dist01 * 360.0)
-    return distance, speed01, click
