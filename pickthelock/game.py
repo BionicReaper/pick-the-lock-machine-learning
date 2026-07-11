@@ -450,8 +450,12 @@ class GameApp:
                 outer = tuple(int(ch * pulse) for ch in outer)
             else:
                 inner, outer = (170, 105, 15), (255, 205, 70)
-            self._ring_wedge(glow, inner, outer, center,
+            # draw each bar to its own layer, then add it onto the glow so that
+            # where two bars overlap the summed channels read as a lighter hue
+            layer = pygame.Surface((DESIGN_W, DESIGN_H), pygame.SRCALPHA)
+            self._ring_wedge(layer, inner, outer, center,
                              bar.center - bar.width / 2, bar.center + bar.width / 2)
+            glow.blit(layer, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
         c.blit(glow, (0, 0))
 
         # AI target ghost marker
