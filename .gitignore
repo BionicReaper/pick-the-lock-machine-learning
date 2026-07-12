@@ -12,3 +12,7 @@ __pycache__/
 
 # neat config
 neat_config.txt
+
+# md files except README.md
+*.md
+!README.md
