@@ -52,6 +52,7 @@ import pickle
 import time
 
 import neat
+from neat.graphs import required_for_output
 
 from pickthelock import paths
 from pickthelock.config import DEFAULT_STAGE, DEFAULT_TUNING
@@ -141,24 +142,49 @@ def run_episode(net, seed: int, inaccuracy: float = 0.0,
     return sim.score
 
 
+def count_dead_nodes(genome, config) -> int:
+    """Hidden nodes that cannot affect any output (no enabled path to an output
+    node). FeedForwardNetwork.create ignores exactly these at runtime, so they
+    are pure structural bloat -- penalizing them pressures selection to shed
+    them without changing any network's behavior."""
+    gc = config.genome_config
+    enabled = [cg.key for cg in genome.connections.values() if cg.enabled]
+    required = required_for_output(gc.input_keys, gc.output_keys, enabled)
+    return sum(1 for k in genome.nodes
+               if k not in gc.output_keys and k not in required)
+
+
 def eval_genome(genome, config, seeds, inaccuracy: float = 0.0,
                 reaction_time_ms: float = 0.0, reaction_time_std: float = 0.05,
                 max_episode_seconds: float = MAX_EPISODE_SECONDS,
-                schema: int = 0) -> float:
+                schema: int = 0, parsimony_dead: float = 0.0,
+                parsimony_node: float = 0.0) -> float:
     net = neat.nn.FeedForwardNetwork.create(genome, config)
     scores = [run_episode(net, s, inaccuracy, reaction_time_ms, reaction_time_std,
                           max_episode_seconds, schema)
               for s in seeds]
-    return (W_AVG * (sum(scores) / len(scores))
-            + W_WORST * min(scores)
-            + W_BEST * max(scores))
+    fitness = (W_AVG * (sum(scores) / len(scores))
+               + W_WORST * min(scores)
+               + W_BEST * max(scores))
+    # Parsimony penalty: a genome property (not per-episode), so it's subtracted
+    # once and stays orthogonal to the avg/worst/best risk weighting. Deleting a
+    # dead node saves parsimony_dead+parsimony_node with zero behavior change ->
+    # selected; deleting a live node saves only parsimony_node but hurts the
+    # scores -> not selected. So selection sheds dead weight before live logic.
+    if parsimony_dead > 0.0:
+        fitness -= parsimony_dead * count_dead_nodes(genome, config)
+    if parsimony_node > 0.0:
+        fitness -= parsimony_node * len(genome.nodes)
+    return fitness
 
 
 # top-level so Windows 'spawn' processes can pickle it
 def _eval_task(args):
-    genome_id, genome, config, seeds, inaccuracy, reaction_ms, reaction_std, max_ep_s, schema = args
+    (genome_id, genome, config, seeds, inaccuracy, reaction_ms, reaction_std,
+     max_ep_s, schema, parsimony_dead, parsimony_node) = args
     return genome_id, eval_genome(genome, config, seeds, inaccuracy, reaction_ms,
-                                  reaction_std, max_ep_s, schema)
+                                  reaction_std, max_ep_s, schema,
+                                  parsimony_dead, parsimony_node)
 
 
 def _atomic_pickle(path: str, obj) -> None:
@@ -178,7 +204,8 @@ class Trainer:
                  inaccuracy: float = 0.0, reaction_time_ms: float = 0.0,
                  reaction_time_std: float = 0.05,
                  max_episode_seconds: float = MAX_EPISODE_SECONDS,
-                 schema: int = 0):
+                 schema: int = 0, parsimony_dead: float = 0.0,
+                 parsimony_node: float = 0.0):
         self.config = config
         self.workers = workers
         self.runs = runs
@@ -191,6 +218,8 @@ class Trainer:
         self.reaction_time_std = reaction_time_std
         self.max_episode_seconds = max_episode_seconds
         self.schema = schema
+        self.parsimony_dead = parsimony_dead
+        self.parsimony_node = parsimony_node
         self.generation = 0
         self.best_fitness = float("-inf")
         self.history: list[tuple[int, float, float]] = []
@@ -202,7 +231,8 @@ class Trainer:
         # same seeds for every genome within a generation, new set each gen
         seeds = [self.seed_base + self.generation * 7919 + i for i in range(self.runs)]
         tasks = [(gid, g, config, seeds, self.inaccuracy, self.reaction_time_ms,
-                  self.reaction_time_std, self.max_episode_seconds, self.schema)
+                  self.reaction_time_std, self.max_episode_seconds, self.schema,
+                  self.parsimony_dead, self.parsimony_node)
                  for gid, g in genomes]
         if self.pool is not None:
             results = dict(self.pool.map(_eval_task, tasks))
@@ -288,6 +318,13 @@ def main():
     parser.add_argument("--schema", type=int, default=0,
                         help="input/output schema id (see pickthelock.schemas); "
                              "must match the schema a resumed/played genome trained on")
+    parser.add_argument("--parsimony_dead", type=float, default=0.0,
+                        help="fitness penalty per dead node (a hidden node with no enabled "
+                             "path to an output); pressures selection to shed structural "
+                             "bloat. 0 = off. Fitness is ~1e5, so try ~50 to start.")
+    parser.add_argument("--parsimony_node", type=float, default=0.0,
+                        help="fitness penalty per node overall (mild Occam pressure toward "
+                             "smaller nets); keep well below --parsimony_dead. 0 = off.")
     parser.add_argument("--resume", default=None, help="path to a neat-checkpoint-N file")
     parser.add_argument("--smoke", action="store_true",
                         help="tiny run (pop 16, 2 gens, 3 sims, 1 worker) to verify the pipeline")
@@ -303,6 +340,10 @@ def main():
         parser.error("--reaction_time_standard_deviation must be non-negative")
     if args.max_episode_seconds <= 0.0:
         parser.error("--max_episode_seconds must be positive")
+    if args.parsimony_dead < 0.0:
+        parser.error("--parsimony_dead must be non-negative")
+    if args.parsimony_node < 0.0:
+        parser.error("--parsimony_node must be non-negative")
 
     # private per-process scratch dir so parallel runs never collide
     run_id = os.getpid()
@@ -337,7 +378,8 @@ def main():
     trainer = Trainer(config, args.workers, args.runs, args.seed_base, run_dir,
                       args.inaccuracy, args.reaction_time_ms,
                       args.reaction_time_standard_deviation,
-                      args.max_episode_seconds, args.schema)
+                      args.max_episode_seconds, args.schema,
+                      args.parsimony_dead, args.parsimony_node)
     if args.resume:
         # keep the per-generation seed rotation moving forward after a resume
         trainer.generation = pop.generation
