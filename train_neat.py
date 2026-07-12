@@ -240,6 +240,30 @@ class Trainer:
             self.pool.join()
 
 
+def _promote_best(trainer, args):
+    """Move the temp best_genome.pkl into its parameter-keyed saved/ home.
+
+    Returns (path, index). No-op (returns the temp path, index 0) for smoke runs
+    or if no best genome was ever written. Named so it can be called from the
+    shutdown path where it must run *before* slower teardown work.
+    """
+    if args.smoke or not os.path.exists(trainer.best_genome_path):
+        return trainer.best_genome_path, 0
+    sch = args.schema
+    rt_ms = args.reaction_time_ms
+    rt_std = args.reaction_time_standard_deviation
+    inacc = args.inaccuracy
+    index = paths.next_saved_index(sch, rt_ms, rt_std, inacc)
+    saved = os.path.join(paths.saved_dir(sch, rt_ms, rt_std, inacc),
+                         paths.saved_genome_filename(
+                             index, int(round(trainer.best_fitness))))
+    os.makedirs(os.path.dirname(saved), exist_ok=True)
+    os.replace(trainer.best_genome_path, saved)  # atomic move within models/
+    print(f"Promoted best genome (index {index}) "
+          f"-> {os.path.relpath(saved, ROOT)}")
+    return saved, index
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train a NEAT net to play Pick the Lock")
     parser.add_argument("--generations", type=int, default=1000)
@@ -328,43 +352,43 @@ def main():
 
     t0 = time.time()
     winner = None
+    interrupted = False
+    played_path = trainer.best_genome_path
     try:
         winner = pop.run(trainer.eval_genomes, args.generations)
     except KeyboardInterrupt:
-        gen = trainer.generation
-        ckpt = neat.Checkpointer(filename_prefix=ckpt_prefix)
-        ckpt.save_checkpoint(config, pop.population, pop.species, gen)
-        print(f"\nInterrupted at generation {gen}. The best genome so far is safe "
-              f"(saved on every improvement) and is promoted below.")
-        print(f"Resume with:  train_neat.py --resume "
-              f"{os.path.relpath(ckpt_prefix, ROOT)}{gen}")
+        interrupted = True
+        print(f"\nInterrupted at generation {trainer.generation}. "
+              f"Promoting best genome before shutdown...")
     finally:
-        trainer.save_history()
+        # Promote FIRST — a fast, atomic move that is the only thing the user
+        # actually cares about keeping. On Ctrl+C the slower teardown below
+        # (checkpoint dump, pool.join) is exactly when an impatient second Ctrl+C
+        # lands; if promotion ran after that, the extra KeyboardInterrupt would
+        # skip it. So do it up front and loop past any extra interrupts until the
+        # critical saves complete. (Skipped for smoke runs by _promote_best.)
+        while True:
+            try:
+                if winner is not None:
+                    _atomic_pickle(
+                        os.path.join(run_dir, paths.WINNER_GENOME_NAME), winner)
+                played_path, _ = _promote_best(trainer, args)
+                trainer.save_history()
+                break
+            except KeyboardInterrupt:
+                continue  # ignore extra Ctrl+C; the promotion must not be lost
+
+        # Best-effort, interruptible teardown: a resume checkpoint and pool cleanup.
+        if interrupted:
+            try:
+                gen = trainer.generation
+                ckpt = neat.Checkpointer(filename_prefix=ckpt_prefix)
+                ckpt.save_checkpoint(config, pop.population, pop.species, gen)
+                print(f"Resume with:  train_neat.py --resume "
+                      f"{os.path.relpath(ckpt_prefix, ROOT)}{gen}")
+            except KeyboardInterrupt:
+                pass
         trainer.close(terminate=winner is None)
-
-    if winner is not None:
-        _atomic_pickle(os.path.join(run_dir, paths.WINNER_GENOME_NAME), winner)
-
-    # promote the best genome from the scratch dir to its parameter-keyed home
-    # under a unique "<index>_<timestamp>_<score>_best_genome.pkl" name, so
-    # successive runs on the same knobs never overwrite each other.
-    # (skip for smoke runs — they only exercise the pipeline)
-    played_path = trainer.best_genome_path
-    played_index = 0
-    if not args.smoke and os.path.exists(trainer.best_genome_path):
-        sch = args.schema
-        rt_ms = args.reaction_time_ms
-        rt_std = args.reaction_time_standard_deviation
-        inacc = args.inaccuracy
-        played_index = paths.next_saved_index(sch, rt_ms, rt_std, inacc)
-        saved = os.path.join(paths.saved_dir(sch, rt_ms, rt_std, inacc),
-                             paths.saved_genome_filename(
-                                 played_index, int(round(trainer.best_fitness))))
-        os.makedirs(os.path.dirname(saved), exist_ok=True)
-        os.replace(trainer.best_genome_path, saved)  # atomic move within models/
-        played_path = saved
-        print(f"Promoted best genome (index {played_index}) "
-              f"-> {os.path.relpath(saved, ROOT)}")
 
     print(f"\nDone in {time.time() - t0:.0f}s. Best fitness {trainer.best_fitness:.0f}.")
     print(f"Watch it play:  .venv\\Scripts\\python.exe play.py "
