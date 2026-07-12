@@ -51,6 +51,7 @@ class Schema:
     interpret: Callable[..., tuple]       # (outputs, ctrl) -> decoded action
     num_outputs: int
     use_input_displacement: bool  # degrees, travel-direction perturbation for observations.build_inputs
+    output_keys: Sequence[str]    # ordered human names for outputs 0..num_outputs-1; used by graph_genome.py
 
     @property
     def num_inputs(self) -> int:
@@ -142,9 +143,11 @@ SCHEMA_1_INPUT_KEYS: tuple[str, ...] = tuple(
 
 SCHEMAS: dict[int, Schema] = {
     0: Schema(input_dictionary=DEFAULT_INPUT_KEYS, interpret=interpret_scheduled_default,
-              num_outputs=3, use_input_displacement=False),
+              num_outputs=3, use_input_displacement=False,
+              output_keys=("target distance", "hold speed", "click")),
     1: Schema(input_dictionary=SCHEMA_1_INPUT_KEYS, interpret=interpret_instant,
-              num_outputs=2, use_input_displacement=True),
+              num_outputs=2, use_input_displacement=True,
+              output_keys=("click", "boost")),
 }
 
 # fail fast on a typo'd or unregistered key in any schema's input_dictionary
@@ -153,6 +156,9 @@ for _sid, _schema in SCHEMAS.items():
     if _unknown:
         raise KeyError(f"schema {_sid} references unknown feature keys {_unknown}; "
                        f"register them in observations.FEATURE_MAP")
+    if len(_schema.output_keys) != _schema.num_outputs:
+        raise ValueError(f"schema {_sid} has {len(_schema.output_keys)} output_keys "
+                         f"but num_outputs={_schema.num_outputs}")
 
 
 def get_schema(n: int) -> Schema:
