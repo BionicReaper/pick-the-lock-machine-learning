@@ -64,7 +64,7 @@ ROOT = paths.ROOT
 CONFIG_PATH = os.path.join(ROOT, "neat_config.txt")
 
 EVAL_RUNS = 15               # headless simulations per genome (5-10)
-W_AVG, W_WORST, W_BEST = 0.60, 0.05, 0.35
+W_AVG, W_WORST, W_BEST = 0.90, 0.08, 0.02
 MAX_EPISODE_SECONDS = 600.0  # default --max_episode_seconds (timer bonuses extend games)
 
 
