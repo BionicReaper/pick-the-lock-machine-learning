@@ -146,6 +146,9 @@ SCHEMAS: dict[int, Schema] = {
               num_outputs=3, use_input_displacement=False,
               output_keys=("target distance", "hold speed", "click")),
     1: Schema(input_dictionary=SCHEMA_1_INPUT_KEYS, interpret=interpret_instant,
+              num_outputs=2, use_input_displacement=False,
+              output_keys=("click", "boost")),
+    2: Schema(input_dictionary=SCHEMA_1_INPUT_KEYS, interpret=interpret_instant,
               num_outputs=2, use_input_displacement=True,
               output_keys=("click", "boost")),
 }
