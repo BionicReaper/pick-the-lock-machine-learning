@@ -30,15 +30,28 @@ from pickthelock.schemas import get_schema, SCHEMAS
 
 ROOT = paths.ROOT
 
-# Per-schema output names (the genome only knows output indices 0..k-1). Falls
-# back to "output N" for schemas not listed here.
-OUTPUT_LABELS: dict[int, list[str]] = {
-    0: ["target distance", "hold speed", "click"],
-}
-
 
 # --------------------------------------------------------------------------- #
-# label helpers: feature key -> human / compact forms
+# label helpers: feature key -> human / compact forms.
+#
+# Feature keys follow observations.py's <property>_<format>[_<idx>] convention.
+# We strip the (multi-word) <format> suffix generically so a re-encoding of the
+# same property — e.g. current_speed_percentage -> current_speed_normalized_360
+# — keeps its label without editing the maps below, and so unrecognized keys
+# fall back to a short "property" name rather than the raw key clipping the page.
+
+# ordered longest-first so a specific format wins over a shorter one it contains
+_FORMATS = (
+    "normalized_base_unlock_appear_rate",
+    "normalized_max_multiplier",
+    "normalized_max_width",
+    "normalized_time_limit",
+    "normalized_max_speed",
+    "normalized_360",
+    "percentage",
+    "boolean",
+    "ratio",
+)
 
 _BAR_PROP = {
     "forward_distance": "fwd dist",
@@ -52,37 +65,48 @@ _BAR_CODE = {
     "is_blue": "blue",
     "width": "w",
 }
+# keyed by the bare property (format suffix stripped)
 _GLOBAL_HUMAN = {
-    "pick_in_hit_zone_boolean": "in zone",
-    "time_remaining_percentage": "time left",
-    "boost_multiplier_percentage": "boost mult",
-    "penalty_factor_ratio": "penalty",
-    "pick_disabled_boolean": "pick disabled",
-    "spawn_interval_ratio": "spawn interval",
-    "blue_chance_percentage": "blue chance",
-    "current_speed_percentage": "speed",
+    "pick_in_hit_zone": "in zone",
+    "time_remaining": "time left",
+    "boost_multiplier": "boost mult",
+    "penalty_factor": "penalty",
+    "pick_disabled": "pick disabled",
+    "spawn_interval": "spawn interval",
+    "blue_chance": "blue chance",
+    "current_speed": "speed",
+    "time_to_next_spawn": "next spawn",
 }
 _GLOBAL_CODE = {
-    "pick_in_hit_zone_boolean": "in_zone",
-    "time_remaining_percentage": "time_left",
-    "boost_multiplier_percentage": "boost",
-    "penalty_factor_ratio": "penalty",
-    "pick_disabled_boolean": "pick_off",
-    "spawn_interval_ratio": "spawn_int",
-    "blue_chance_percentage": "blue_chance",
-    "current_speed_percentage": "speed",
+    "pick_in_hit_zone": "in_zone",
+    "time_remaining": "time_left",
+    "boost_multiplier": "boost",
+    "penalty_factor": "penalty",
+    "pick_disabled": "pick_off",
+    "spawn_interval": "spawn_int",
+    "blue_chance": "blue_chance",
+    "current_speed": "speed",
+    "time_to_next_spawn": "next_spawn",
 }
+
+
+def _strip_format(name: str) -> str:
+    """Drop a trailing <format> suffix, leaving the bare property name."""
+    for fmt in _FORMATS:
+        if name.endswith("_" + fmt):
+            return name[: -(len(fmt) + 1)]
+    return name
 
 
 def _split_bar_key(key: str):
-    """('bar_forward_distance_percentage_3') -> ('forward_distance', 3) or None."""
+    """('bar_forward_distance_normalized_360_3') -> ('forward_distance', 3) or None."""
     if not key.startswith("bar_"):
         return None
     body, _, idx = key.rpartition("_")
     if not idx.isdigit():
         return None
-    # body is e.g. 'bar_forward_distance_percentage'; strip 'bar_' and the format word
-    inner = body[len("bar_"):].rsplit("_", 1)[0]
+    # body is e.g. 'bar_forward_distance_normalized_360'; strip 'bar_' and format
+    inner = _strip_format(body[len("bar_"):])
     return inner, int(idx)
 
 
@@ -90,8 +114,9 @@ def humanize(key: str) -> str:
     bar = _split_bar_key(key)
     if bar:
         prop, n = bar
-        return f"bar {n} · {_BAR_PROP.get(prop, prop)}"
-    return _GLOBAL_HUMAN.get(key, key)
+        return f"bar {n} · {_BAR_PROP.get(prop, prop.replace('_', ' '))}"
+    prop = _strip_format(key)
+    return _GLOBAL_HUMAN.get(prop, prop.replace("_", " "))
 
 
 def code_label(key: str) -> str:
@@ -99,7 +124,8 @@ def code_label(key: str) -> str:
     if bar:
         prop, n = bar
         return f"bar{n}_{_BAR_CODE.get(prop, prop)}"
-    return _GLOBAL_CODE.get(key, key)
+    prop = _strip_format(key)
+    return _GLOBAL_CODE.get(prop, prop)
 
 
 # --------------------------------------------------------------------------- #
@@ -202,7 +228,7 @@ def build_graph(genome, schema, schema_id: int, num_outputs: int,
         bias_only = len(incoming[key]) == 0
         if kind == "output":
             idx = key
-            names = OUTPUT_LABELS.get(schema_id, [])
+            names = schema.output_keys
             oname = names[idx] if idx < len(names) else f"output {idx}"
             label = f"{key} · {oname}"
             sub = f"output {key} · {oname}"
@@ -233,7 +259,7 @@ def build_graph(genome, schema, schema_id: int, num_outputs: int,
 
     # --- derived activation-expression per output ---------------------------
     formulas = _derive_formulas(drawn_outputs, all_nodes, incoming, input_labels,
-                                schema_id)
+                                schema.output_keys)
 
     # --- counts for the header / footer -------------------------------------
     hidden_total = len(hidden_keys)
@@ -257,7 +283,7 @@ def build_graph(genome, schema, schema_id: int, num_outputs: int,
     return columns, edge_payload, formulas, meta
 
 
-def _derive_formulas(outputs, all_nodes, incoming, input_labels, schema_id):
+def _derive_formulas(outputs, all_nodes, incoming, input_labels, output_names):
     """Expand each output as a pretty-printed tree of act(bias + response·agg(w·child…)).
 
     Mirrors neat-python's node evaluation: sum aggregation folds the weighted
@@ -268,7 +294,7 @@ def _derive_formulas(outputs, all_nodes, incoming, input_labels, schema_id):
     signed term on its own line, and each nested activation indented one level
     deeper -- so the box grows vertically instead of scrolling sideways.
     """
-    names = OUTPUT_LABELS.get(schema_id, [])
+    names = output_names
     INDENT = "  "
 
     def block(key: int, budget: list[int]) -> list[str]:
