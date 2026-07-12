@@ -56,7 +56,7 @@ REACT_BAR_LIFETIME_S = 0.8   # the bar declines from full width to the expiry
 INTER_TRIAL_S = (0.75, 2.0)  # random empty-board wait before each bar
 
 # inaccuracy test
-INACC_SAMPLES = 100
+INACC_SAMPLES = 50
 INACC_BAR_WIDTH_DEG = 6.0
 INACC_SPAWN_S = (1.2, 2.5)          # spawn distance = uniform(this) * speed
 INACC_MIN_DEG, INACC_MAX_DEG = 30.0, 330.0
