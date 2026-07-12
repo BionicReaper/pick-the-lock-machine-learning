@@ -166,6 +166,12 @@ def eval_genome(genome, config, seeds, inaccuracy: float = 0.0,
     fitness = (W_AVG * (sum(scores) / len(scores))
                + W_WORST * min(scores)
                + W_BEST * max(scores))
+    # A raw eval at the fitness threshold is a *perfect* genome (every run maxed);
+    # never let the parsimony penalty mask it, or it would drop below the
+    # threshold and NEAT would never terminate. Perfection is judged on the
+    # unpenalized score.
+    if fitness >= config.fitness_threshold:
+        return fitness
     # Parsimony penalty: a genome property (not per-episode), so it's subtracted
     # once and stays orthogonal to the avg/worst/best risk weighting. Deleting a
     # dead node saves parsimony_dead+parsimony_node with zero behavior change ->
