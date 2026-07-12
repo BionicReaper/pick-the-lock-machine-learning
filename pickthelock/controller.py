@@ -34,11 +34,19 @@ from .sim import LockpickingSim, Bar, EV_TARGET_REACHED
 
 class ScheduledClickController:
     def __init__(self, sim: LockpickingSim, inaccuracy: float = 0.0,
-                 reaction_time_ms: float = 0.0, reaction_time_std: float = 0.05):
+                 reaction_time_ms: float = 0.0, reaction_time_std: float = 0.05,
+                 seed: int | None = None):
         self.sim = sim
         self.inaccuracy = inaccuracy
         self.reaction_time_ms = reaction_time_ms
         self.reaction_time_std = reaction_time_std
+        # Independent RNG streams for the two human-imperfection draws so that
+        # the same external seed reproduces the same conditions (train_neat can
+        # pass a per-episode seed). Kept separate so consuming one draw doesn't
+        # shift the other's sequence.
+        self.inaccuracyRng = random.Random()
+        self.delayRng = random.Random()
+        self.seed(seed)
         self.active = False
         self.target_dist = 0.0
         self.boost_dist = 0.0
@@ -50,11 +58,25 @@ class ScheduledClickController:
 
     # ------------------------------------------------------------------ #
 
+    def seed(self, seed: int | None) -> None:
+        """(Re)seed both imperfection RNG streams from one external seed.
+
+        The two streams are decorrelated so a given seed yields a fixed but
+        independent sequence for aim inaccuracy and reaction delay. Pass None
+        for nondeterministic (system-entropy) seeding."""
+        self._seed = seed
+        if seed is None:
+            self.inaccuracyRng.seed()
+            self.delayRng.seed()
+        else:
+            self.inaccuracyRng.seed(seed)
+            self.delayRng.seed(seed ^ 0x9E3779B9)
+
     def calculate_displacement(self) -> float:
         """Return the distance_deg after applying the inaccuracy knob."""
         if self.inaccuracy <= 0.0:
             return 0.0
-        return self.sim.current_speed * self.inaccuracy * random.gauss(0.0, 1.0)
+        return self.sim.current_speed * self.inaccuracy * self.inaccuracyRng.gauss(0.0, 1.0)
 
     def schedule(self, distance_deg: float, boost_hold_frac: float, do_click: bool) -> None:
         """Arm a click `distance_deg` of travel from the current position.
@@ -91,7 +113,7 @@ class ScheduledClickController:
         if self.reaction_time_std == 0.0:
             delay_ticks = round(base)
         else:
-            delay = base * (1.0 + random.gauss(0.0, 1.0) * self.reaction_time_std)
+            delay = base * (1.0 + self.delayRng.gauss(0.0, 1.0) * self.reaction_time_std)
             delay_ticks = max(0, round(delay))
         due = self.tick_counter + delay_ticks
         self.scheduled_prompts.add(due)

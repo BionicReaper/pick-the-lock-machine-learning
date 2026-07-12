@@ -49,7 +49,6 @@ import itertools
 import multiprocessing
 import os
 import pickle
-import random
 import time
 
 import neat
@@ -78,9 +77,9 @@ def run_episode(net, seed: int, inaccuracy: float = 0.0,
     sim = LockpickingSim(DEFAULT_STAGE, DEFAULT_TUNING, seed=seed)
     # aim inaccuracy is applied by the controller (schedule), same as play mode;
     # reaction delay is handled by this loop below, not the controller
-    ctrl = ScheduledClickController(sim, inaccuracy=inaccuracy)
+    ctrl = ScheduledClickController(sim, inaccuracy=inaccuracy, seed=seed)
     sch = get_schema(schema)
-    gauss = random.gauss
+    gauss = ctrl.delayRng.gauss
 
     def prompt():
         if sch.use_input_displacement:
