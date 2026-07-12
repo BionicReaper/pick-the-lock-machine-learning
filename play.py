@@ -4,7 +4,7 @@
 
 --ai with no path infers the genome from the schema and human knobs, picking the
 saved genome with --index (default 0) under
-models/saved/<schema>/<rt_ms>/<rt_std>/<inacc>/<index>_<timestamp>_<score>_best_genome.pkl."""
+models/saved/<schema>/<rt_ms>/<rt_std>/<inacc>/<index>_best_genome_<score>.pkl."""
 
 from pickthelock.game import main
 

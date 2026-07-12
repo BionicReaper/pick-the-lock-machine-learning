@@ -37,7 +37,7 @@ pickthelock.paths), so parallel runs never collide:
         checkpoints/neat-checkpoint-N   resumable population checkpoints
 
 On termination (organic or Ctrl+C) the best genome is promoted to
-    models/saved/<schema>/<rt_ms>/<rt_std>/<inacc>/<index>_<timestamp>_<score>_best_genome.pkl
+    models/saved/<schema>/<rt_ms>/<rt_std>/<inacc>/<index>_best_genome_<score>.pkl
 unless it was a --smoke run.
 """
 

@@ -5,8 +5,8 @@ the I/O schema and the human-imperfection knobs a genome was trained with
 (``schema`` / ``reaction_time_ms`` / ``reaction_time_standard_deviation`` /
 ``inaccuracy``)::
 
-    models/saved/<schema>/<rt_ms>/<rt_std>/<inacc>/<index>_<timestamp>_<score>_best_genome.pkl
-    models/graphs/<schema>/<rt_ms>/<rt_std>/<inacc>/<index>_<timestamp>_<score>_best_genome.html
+    models/saved/<schema>/<rt_ms>/<rt_std>/<inacc>/<index>_best_genome_<score>.pkl
+    models/graphs/<schema>/<rt_ms>/<rt_std>/<inacc>/<index>_best_genome_<score>.html
     models/temp/<schema>/<rt_ms>/<rt_std>/<inacc>/<run_id>/
         best_genome.pkl
         winner_genome.pkl
@@ -18,7 +18,7 @@ reaction_time_ms=0.0, reaction_time_standard_deviation=0.05, inaccuracy=0.0)
 lands under ``.../0/0.0/0.05/0.0/``. The extra ``<run_id>`` layer under
 ``temp/`` keeps parallel training processes from clobbering each other's
 in-progress files; on termination the best genome is promoted from there into
-``saved/`` under a unique ``<index>_<timestamp>_<score>_best_genome.pkl`` name
+``saved/`` under a unique ``<index>_best_genome_<score>.pkl`` name
 (the index auto-increments per parameter set, so successive runs never
 overwrite). The consumers (play.py, graph_genome.py) select one by its index,
 defaulting to 0.
@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import os
 import re
-import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_DIR = os.path.join(ROOT, "models")
@@ -59,15 +58,15 @@ def saved_dir(schema: int, reaction_time_ms: float, reaction_time_std: float,
                         param_subpath(schema, reaction_time_ms, reaction_time_std, inaccuracy))
 
 
-# freshly promoted genomes are named "<index>_<timestamp>_<score>_best_genome.pkl",
+# freshly promoted genomes are named "<index>_best_genome_<score>.pkl",
 # but any "<index>_<anything>.pkl" is accepted so hand-placed/migrated genomes
 # still resolve. The leading integer is the index the consumers select by.
 _SAVED_RE = re.compile(r"^(\d+)_.+\.pkl$")
 
 
 def saved_genome_filename(index: int, score, when: float | None = None) -> str:
-    ts = time.strftime("%Y%m%d-%H%M%S", time.localtime(when))
-    return f"{index}_{ts}_{score}_{BEST_GENOME_NAME}"
+    stem = BEST_GENOME_NAME.removesuffix(".pkl")
+    return f"{index}_{stem}_{float(score):.5f}.pkl"
 
 
 def saved_genomes(schema: int, reaction_time_ms: float, reaction_time_std: float,
