@@ -6,7 +6,7 @@ Layout mirrors popup_dark_carnival_encounter_lockpicking.xml/.css:
 size; it seats on the matching dark disc baked into lock_background).
 
 Modes:
-  human play (default)      LMB pick, RMB hold boost, F9/Esc pause, F3 debug
+  human play (default)      LMB/Up pick, RMB/Space hold boost, F9/Esc pause, F3 debug
   AI playback (--ai path)   a trained NEAT genome drives the scheduler
 """
 
@@ -113,6 +113,10 @@ class GameApp:
         self.float_texts: list[FloatText] = []
         self.high_score = self._load_high_score()
         self.last_final_score = 0
+        # boost can be held from two sources at once (RMB and Space);
+        # the sim boosts while either is down
+        self._boost_mouse = False
+        self._boost_key = False
 
         self.sim: LockpickingSim | None = None
         self.ctrl: ScheduledClickController | None = None
@@ -205,6 +209,7 @@ class GameApp:
         self.particles.clear()
         self.float_texts.clear()
         self.ai_outputs = None
+        self._boost_mouse = self._boost_key = False
         self.state = RUNNING
         self.assets.start_music()
         self.assets.play_vo("start")
@@ -349,30 +354,49 @@ class GameApp:
                         return False
                 elif ev.key == pygame.K_SPACE and self.state in (MENU, POSTGAME):
                     self.start_game()
+                elif ev.key == pygame.K_SPACE and self.state == RUNNING:
+                    self._set_boost(key=True)
+                elif ev.key == pygame.K_UP and self.state == RUNNING and not self.net:
+                    self._human_click()
+            if ev.type == pygame.KEYUP and ev.key == pygame.K_SPACE:
+                self._set_boost(key=False)
             if ev.type == pygame.MOUSEBUTTONDOWN:
                 if self.state in (MENU, POSTGAME):
                     if self._play_button_rect().collidepoint(self._mouse_design(ev.pos)):
                         self.start_game()
                 elif self.state == RUNNING and not self.net:
                     if ev.button == 1:
-                        for out in self.sim.click():
-                            if out[0] == EV_PICKED:
-                                self._fx_pick(out[1])
-                            elif out[0] == EV_MISSED:
-                                self._fx_miss()
-                            elif out[0] == EV_TIMER_BONUS:
-                                self.float_texts.append(FloatText(
-                                    f"+{out[1]:.1f}",
-                                    (BOARD_CENTER[0], BOARD_CENTER[1] - 84), COL_MARKER_BLUE))
-                            elif out[0] == EV_GAME_OVER:
-                                self.end_game()
+                        self._human_click()
                     elif ev.button == 3:
-                        self.sim.rmb_held = True
-                        self.assets.play("boost", 0.5)
+                        self._set_boost(mouse=True)
             if ev.type == pygame.MOUSEBUTTONUP and ev.button == 3:
-                if self.state == RUNNING and not self.net:
-                    self.sim.rmb_held = False
+                self._set_boost(mouse=False)
         return True
+
+    def _human_click(self):
+        for out in self.sim.click():
+            if out[0] == EV_PICKED:
+                self._fx_pick(out[1])
+            elif out[0] == EV_MISSED:
+                self._fx_miss()
+            elif out[0] == EV_TIMER_BONUS:
+                self.float_texts.append(FloatText(
+                    f"+{out[1]:.1f}",
+                    (BOARD_CENTER[0], BOARD_CENTER[1] - 84), COL_MARKER_BLUE))
+            elif out[0] == EV_GAME_OVER:
+                self.end_game()
+
+    def _set_boost(self, *, mouse: bool | None = None, key: bool | None = None):
+        if mouse is not None:
+            self._boost_mouse = mouse
+        if key is not None:
+            self._boost_key = key
+        if self.sim is None or self.net or self.state != RUNNING:
+            return
+        held = self._boost_mouse or self._boost_key
+        if held and not self.sim.rmb_held:
+            self.assets.play("boost", 0.5)
+        self.sim.rmb_held = held
 
     def _mouse_design(self, pos):
         return (pos[0] / self.scale, pos[1] / self.scale)
@@ -550,12 +574,12 @@ class GameApp:
             ("Successfully pick the lock as many times as you can", COL_GREY, self.f_small),
             ("before time runs out.", COL_GREY, self.f_small),
             ("", COL_GREY, self.f_small),
-            ("[LMB]  PICK", COL_GOLD_LIGHT, self.f_med),
+            ("[LMB / UP]  PICK", COL_GOLD_LIGHT, self.f_med),
             ("Activate the lock pick when it reaches the highlighted bar.", COL_GREY, self.f_small),
             ("Missing a bar briefly disables the pick.", COL_GREY, self.f_small),
             ("Blue bars grant additional time.", COL_MARKER_BLUE, self.f_small),
             ("", COL_GREY, self.f_small),
-            ("[RMB]  BOOST", COL_GOLD_LIGHT, self.f_med),
+            ("[RMB / SPACE]  BOOST", COL_GOLD_LIGHT, self.f_med),
             ("Hold for continuous speed boost.", COL_GREY, self.f_small),
             ("", COL_GREY, self.f_small),
             ("SCORING", COL_GOLD_DARK, self.f_stat_title),
@@ -608,9 +632,9 @@ class GameApp:
         self._button(c, self._play_button_rect(), "PLAY AGAIN")
 
     def _draw_hints(self, c):
-        left = self.f_small.render("[LMB] PICK", True, COL_GREY)
+        left = self.f_small.render("[LMB / UP] PICK", True, COL_GREY)
         c.blit(left, (30, DESIGN_H - 120))
-        right = self.f_small.render("BOOST [RMB]", True, COL_GREY)
+        right = self.f_small.render("BOOST [RMB / SPACE]", True, COL_GREY)
         c.blit(right, (DESIGN_W - 30 - right.get_width(), DESIGN_H - 80))
         pause = self.f_small.render("[F9] PAUSE", True, (110, 110, 110))
         c.blit(pause, (DESIGN_W - 30 - pause.get_width(), 24))

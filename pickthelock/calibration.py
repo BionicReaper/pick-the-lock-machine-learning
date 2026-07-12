@@ -327,6 +327,11 @@ class CalibrationApp(GameApp):
                         self.state = PAUSED
                     elif self.state == PAUSED:
                         self.state = RUNNING
+                elif ev.key == pygame.K_UP and self.state == RUNNING:
+                    if self.phase == "react":
+                        self._react_click()
+                    else:
+                        self._inacc_click()
             if (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
                     and self.state == RUNNING):
                 if self.phase == "react":
@@ -400,10 +405,10 @@ class CalibrationApp(GameApp):
 
     def _draw_hints(self, c):
         if self.phase == "react":
-            left = self.f_small.render("[LMB] PICK — click the instant the bar appears",
+            left = self.f_small.render("[LMB / UP] PICK — click the instant the bar appears",
                                        True, COL_GREY)
         else:
-            left = self.f_small.render("[LMB] PICK — speed is locked", True, COL_GREY)
+            left = self.f_small.render("[LMB / UP] PICK — speed is locked", True, COL_GREY)
         c.blit(left, (30, DESIGN_H - 120))
         pause = self.f_small.render("[F9] PAUSE", True, (110, 110, 110))
         c.blit(pause, (DESIGN_W - 30 - pause.get_width(), 24))
