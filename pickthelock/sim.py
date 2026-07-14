@@ -273,12 +273,8 @@ class LockpickingSim:
         if len(self.bars) >= s.max_unlocks_on_board:
             return None
         width = self.initial_bar_width
-        # forbidden arcs around existing bars: centers may not be closer than
-        # half both widths plus the minimum gap
-        forbidden: list[tuple[float, float]] = []
-        for bar in self.bars:
-            r = width / 2.0 + bar.width / 2.0 + s.min_degrees_between_unlocks
-            forbidden.append((ang_norm(bar.center - r), 2.0 * r))
+        r = s.min_degrees_between_unlocks
+        forbidden = [(ang_norm(bar.center - r), 2.0 * r) for bar in self.bars]
         center = self._sample_allowed_angle(forbidden)
         if center is None:
             return None
@@ -299,29 +295,27 @@ class LockpickingSim:
         (each given as (start_deg, length_deg), clockwise)."""
         if not forbidden:
             return self.rng.uniform(0.0, 360.0)
-        # merge forbidden arcs on the circle
-        arcs = sorted((start, min(length, 360.0)) for start, length in forbidden)
-        merged: list[list[float]] = []
-        for start, length in arcs:
+        # cut every arc at the 0/360 seam so the merge below is a plain
+        # interval merge on [0, 360] with no wrap-around special cases
+        segs: list[list[float]] = []
+        for start, length in forbidden:
+            if length >= 360.0:
+                return None
+            start = ang_norm(start)
             end = start + length
+            if end > 360.0:
+                segs.append([start, 360.0])
+                segs.append([0.0, end - 360.0])
+            else:
+                segs.append([start, end])
+        segs.sort()
+        merged: list[list[float]] = []
+        for start, end in segs:
             if merged and start <= merged[-1][1]:
                 merged[-1][1] = max(merged[-1][1], end)
             else:
                 merged.append([start, end])
-        # wrap-around: last arc may spill past 360 into the first
-        if len(merged) > 1 and merged[-1][1] >= 360.0 + merged[0][0]:
-            merged[0][0] = 0.0
-            merged[0][1] = max(merged[0][1], merged[-1][1] - 360.0)
-            merged.pop()
-        elif merged and merged[-1][1] > 360.0:
-            spill = merged[-1][1] - 360.0
-            merged[-1][1] = 360.0
-            if merged[0][0] < spill:
-                merged[0][0] = 0.0
-                merged[0][1] = max(merged[0][1], spill)
-            else:
-                merged.insert(0, [0.0, spill])
-        # allowed gaps between merged arcs
+        # allowed gaps between merged arcs (the last gap wraps through 0)
         gaps: list[tuple[float, float]] = []
         total = 0.0
         for i, (start, end) in enumerate(merged):
