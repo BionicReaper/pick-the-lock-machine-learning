@@ -57,36 +57,61 @@ one with `--index N` (default 0); pass an explicit path to `--ai` or to
 | `smoke_test.py` | Determinism + heuristic-bot sanity checks |
 | `extracted/` | Decompiled Dota assets (`game.vdata`, PNGs, MP3s, layout XML/CSS) |
 
-## The rules (datamined values + footage-verified semantics)
+## The rules (datamined values + binary-verified semantics)
 
-Semantics were verified by frame-by-frame tracking of retail gameplay footage
-(beam angle + marker wedges across 2,259 frames at 30 fps):
+Semantics were originally fitted from frame-by-frame tracking of retail
+footage (beam angle + marker wedges across 2,259 frames at 30 fps), then
+**read directly out of `client.dll`** — class `CDOTALockpickingGame`, from
+`src/game/client/dota/panorama/dark_carnival/lockpicking/dota_lockpicking_schema.cpp`.
+Method virtual addresses are cited in `config.py`. The disassembly overturned
+several of the footage fits; where they disagree, the binary wins.
 
-- 30 s time limit; pick rotates at 40°/s base (measured ~36–37 at game
-  start), up to ×3.2 with boost (measured ~120–140°/s sustained).
-- **Boost (RMB)**: multiplier ramps at `m_flSpeedBoostRate` = 6×/s → full
-  boost in ~0.37 s, decays equally fast on release (measured ±240°/s²).
-  `m_flSpeedBoostPercentage` (0.12) has no observable mapping yet — unused.
-- **Miss**: pick turns red and is disabled ~0.55 s (fitted) while speed
-  decays exponentially (`m_flDecelerationRate` = 3/s, never a full stop);
-  boost is lost; then speed recovers (`m_flRecoverRate` = 60°/s², plus boost
-  re-ramp). The missed bar is not consumed.
-- **Direction reverses on every successful pick** (observed repeatedly);
-  misses do not reverse. `SimTuning.reverse_on_success` to toggle.
-- **Bars**: `m_nUnlockRadius` = 40 is a half-arc in px at the 180 px board
-  radius → initial width 2×40/180 rad ≈ **25.5°** (measured 22–24 at spawn).
-  Both edges close at 3°/s (width −6°/s), despawn at ≈3° → ~3–3.7 s life.
-  Max 6 on board (rarely binds — good players clear them), ≥20° apart.
-- **Spawning**: interval timer; interval = `1.4 s − 0.04 s × unlocks`
-  (measured gaps ~1.35 s early → ~0.6 s after ~24 picks). The raw formula
-  hits zero at 35 unlocks; the sim clamps at `min_spawn_interval` = 0.1 s
-  (the real game's floor is unknown). A bar spawns at game start, and an
-  empty board refills within ~0.1 s.
-- Blue bars: 15% chance, +4% pity per orange spawn (reset on blue — pity
-  direction is still an assumption); a blue pick grants +1.5 s.
+- 30 s time limit; pick rotates at 40°/s base, up to ×3.2 with boost.
+- **Update is per rendered frame with wall-clock `dt`** — there is no fixed
+  timestep. `SimTuning.tick_rate` is the *assumed client framerate*, and it
+  really does change the physics (below).
+- **Boost (RMB)**: `speed += m_flSpeedBoostRate` (6) **per Update call, with
+  no `× dt`** — so the ramp is framerate dependent: 360°/s² at 60 fps,
+  864°/s² at 144 fps. Full boost takes 15 frames regardless. On release,
+  speed bleeds down by `m_flDecelerationRate × banked_boost × dt` until it
+  reaches base. `m_flSpeedBoostPercentage` (0.12) is confirmed dead code.
+- **Miss**: speed is set to **exactly 0** and the pick is latched off until
+  it climbs back at `m_flRecoverRate` (60°/s²) — i.e. `base/recover` =
+  **0.667 s**, not a fixed 0.55 s. Clicks in that window are swallowed
+  without even registering a miss, and RMB is ignored. Banked boost survives
+  the miss. The missed bar is not consumed.
+- **Direction reverses on every successful pick**; misses do not reverse.
+- **Bars**: half-width is `atan(40/180)` = **12.53°** (full **25.06°**), not
+  the small-angle 25.46°. Each edge closes at 3°/s (width −6°/s) and the bar
+  is dropped once the half-width hits 0 → **4.18 s** life. Max 6 on board.
+  The hit test is inclusive with **no slack** —
+  `dota_lockpicking_unlock_marker_display_buffer` is rendering-only. When
+  bars overlap, the most recently spawned one is picked.
+- **Spawning**: the countdown and the interval are **separate fields**, and
+  the interval is *not* `1.4 − 0.04 × unlocks`:
+  ```
+  timer -= dt
+  if timer < 0:
+      if picked_since_last_spawn:
+          interval -= 0.04          # at most once per cycle
+          picked_since_last_spawn = False
+      timer = interval              # reload, nothing carries over
+      if len(bars) < 6: spawn()
+  ```
+  So picking a lock **never shortens the countdown already running**; three
+  picks inside one interval still shave 0.04 only once; a cycle with no picks
+  shaves nothing; and the interval keeps shrinking on cycles where the board
+  is full and nothing spawns. Retail applies no floor.
+- **Spawn angles are rejection-sampled**: uniform on [0, 360), retried while
+  within `m_flMinDegreesBetweenUnlocks` (20°) of an existing bar, giving up
+  after 20 tries and using that conflicting angle anyway — so the 20°
+  spacing is a soft constraint. Exactly one bar exists at t=0, placed at
+  `uniform(20, 120)`, and it never rolls blue. An empty board does **not**
+  refill early; it waits for the timer.
+- Blue bars: rolled at spawn, `15 + 4 × spawns_since_blue ≥ rand(0, 100)`;
+  a blue pick grants +1.5 s.
 - Score 1000 per pick (menu confirms; rewards at 6k/12k/18k/24k).
 - `m_nNumUnlocks = 1000` = win threshold (unreachable in practice ⇒ endless).
-- Hit test gets ±1° slack (`dota_lockpicking_unlock_marker_display_buffer`).
 
 ## NEAT model interface
 

@@ -467,6 +467,14 @@ class GameApp:
         # marker wedges (dial edge -> board rim, gold gradient)
         glow = pygame.Surface((DESIGN_W, DESIGN_H), pygame.SRCALPHA)
         for bar in sim.bars:
+            # dota_lockpicking_unlock_marker_display_buffer: retail draws the
+            # wedge this many degrees narrower per side than the real hit arc,
+            # and stops drawing it entirely once that goes non-positive — so a
+            # pick just outside the visible edge still counts, and the last
+            # ~0.33 s of a bar's life is invisible but still hittable.
+            drawn_half = bar.width / 2.0 - sim.tuning.marker_display_buffer_deg
+            if drawn_half <= 0.0:
+                continue
             if bar.is_blue:
                 inner, outer = (60, 120, 160), COL_MARKER_BLUE
                 pulse = 0.925 + 0.075 * math.sin(self.wall_time * math.tau / 0.6)
@@ -478,7 +486,7 @@ class GameApp:
             # where two bars overlap the summed channels read as a lighter hue
             layer = pygame.Surface((DESIGN_W, DESIGN_H), pygame.SRCALPHA)
             self._ring_wedge(layer, inner, outer, center,
-                             bar.center - bar.width / 2, bar.center + bar.width / 2)
+                             bar.center - drawn_half, bar.center + drawn_half)
             glow.blit(layer, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
         c.blit(glow, (0, 0))
 
